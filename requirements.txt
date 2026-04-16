@@ -1,0 +1,35 @@
+# =============================================================================
+# Local Development Dependencies — NYC TLC BI Pipeline
+# =============================================================================
+# PURPOSE : Install these in your local Python venv for running dbt, writing
+#           DAGs, and ad-hoc Snowflake scripting — OUTSIDE of Docker.
+#
+# USAGE:
+#   python -m venv .venv
+#   source .venv/bin/activate        # Windows: .venv\Scripts\activate
+#   pip install -r requirements.txt
+#
+# NOTE: This file is for local dev only. The Airflow Docker image uses
+#       orchestration/requirements.txt instead.
+# =============================================================================
+
+
+# --- Snowflake connectivity --------------------------------------------------
+snowflake-connector-python[pandas]>=3.6.0,<4.0.0
+snowflake-sqlalchemy>=1.5.3,<2.0.0
+
+# --- dbt (run models locally with `dbt run`, `dbt test`, `dbt debug`) --------
+dbt-core>=1.7.0,<2.0.0
+dbt-snowflake>=1.7.0,<2.0.0
+
+# --- Data manipulation (ad-hoc scripts & DAG development) -------------------
+pandas>=2.1.0,<3.0.0
+pyarrow>=14.0.0,<16.0.0        # Parquet read/write; matches NYC TLC file format
+
+# --- Linting & formatting ----------------------------------------------------
+ruff>=0.4.0                    # Fast Python linter (replaces flake8 + isort)
+black>=24.0.0                  # Code formatter
+
+# --- Testing -----------------------------------------------------------------
+pytest>=8.0.0
+pytest-cov>=5.0.0

@@ -39,7 +39,7 @@ CREATE ROLE IF NOT EXISTS ANALYST_ROLE
 GRANT ROLE ANALYST_ROLE TO ROLE DE_ROLE;
 
 -- Grant DE_ROLE to the pipeline user (replace DE_ADMIN with your actual username)
--- GRANT ROLE DE_ROLE TO USER DE_ADMIN;
+GRANT ROLE DE_ROLE TO USER RPDHUMAL;
 
 
 -- ===========================================================================
@@ -83,6 +83,8 @@ GRANT OWNERSHIP ON DATABASE NYC_TLC_DB TO ROLE DE_ROLE
 
 USE DATABASE NYC_TLC_DB;
 
+USE ROLE DE_ROLE;
+
 CREATE SCHEMA IF NOT EXISTS NYC_TLC_DB.BRONZE
     COMMENT = 'Landing zone — 1:1 copy of S3 source, VARIANT format, no transforms';
 
@@ -123,19 +125,38 @@ CREATE FILE FORMAT IF NOT EXISTS NYC_TLC_DB.BRONZE.PARQUET_FORMAT
 
 
 -- ===========================================================================
--- 6. EXTERNAL STAGE — Public NYC TLC S3 Bucket
---    Source: s3://nyc-tlc/trip data/
---    The bucket is publicly readable — no AWS credentials required.
---    Ref: .claude/DATA_LINEAGE_CONTRACTS.md §2 Bronze rules
+-- 6. EXTERNAL STAGE — Azure Blob Storage
+--    Files are uploaded to Azure by infra/scripts/upload_to_azure.py before
+--    this stage is used. Ref: .claude/DATA_LINEAGE_CONTRACTS.md §2
+--
+--    CREDENTIALS: SAS token stored in .env — never paste it into this file.
+--    Substitute the three placeholders below at runtime before executing:
+--
+--      AZURE_STORAGE_ACCOUNT   → value of AZURE_STORAGE_ACCOUNT from .env
+--      AZURE_STORAGE_CONTAINER → value of AZURE_STORAGE_CONTAINER from .env
+--      AZURE_SAS_TOKEN         → value of AZURE_SAS_TOKEN from .env
+--                                (omit the leading '?' from the token)
+--
+--    DATE SCOPE: Jan 2025 → latest available.
+--    The stage points at the entire container. Date filtering is applied via
+--    PATTERN at query time (COPY INTO / LIST). The canonical regex below
+--    matches yellow_tripdata_2025-MM.parquet through 2029-MM.parquet and
+--    must be used in every COPY INTO command (Phase 2 Airflow DAG).
+--
+--    PATTERN (copy this into every COPY INTO):
+--      '.*yellow_tripdata_202[5-9]-[0-9]{2}\\.parquet'
 -- ===========================================================================
 
-CREATE STAGE IF NOT EXISTS NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
-    URL            = 's3://nyc-tlc/trip data/'
+CREATE OR REPLACE STAGE NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
+    URL            = 'azure://<AZURE_STORAGE_ACCOUNT>.blob.core.windows.net/<AZURE_STORAGE_CONTAINER>/'
+    CREDENTIALS    = (AZURE_SAS_TOKEN = '<AZURE_SAS_TOKEN>')
     FILE_FORMAT    = NYC_TLC_DB.BRONZE.PARQUET_FORMAT
-    COMMENT        = 'External stage pointing at the public NYC TLC S3 bucket';
+    COMMENT        = 'External stage — Azure Blob Storage. Ingest scope: Jan 2025 onwards. Apply PATTERN filter on every COPY INTO.';
 
--- Verify the stage is reachable and list available files
--- LIST @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE PATTERN='.*yellow_tripdata_2024.*';
+-- List all in-scope files (Jan 2025 → latest). Run after upload_to_azure.py
+-- to confirm files are visible to Snowflake before running COPY INTO.
+LIST @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
+    PATTERN = '.*yellow_tripdata_202[5-9]-[0-9]{2}\.parquet';
 
 
 -- ===========================================================================
@@ -151,7 +172,15 @@ SHOW STAGES       IN SCHEMA NYC_TLC_DB.BRONZE;
 SHOW FILE FORMATS IN SCHEMA NYC_TLC_DB.BRONZE;
 SHOW ROLES        LIKE '%ROLE';
 
--- Quick connectivity test: list a single Parquet file from the stage
--- SELECT METADATA$FILENAME, METADATA$FILE_ROW_NUMBER
--- FROM @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE (PATTERN => '.*yellow_tripdata_2024-01.*')
--- LIMIT 5;
+-- Connectivity test: list the first available 2025 file from the stage.
+-- Expected: one row with name = 'yellow_tripdata_2025-01.parquet'
+LIST @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
+    PATTERN = '.*yellow_tripdata_2025-01\\.parquet';
+
+-- Row-count sanity check against the stage (no COPY INTO yet, just a peek).
+SELECT METADATA$FILENAME,
+       COUNT(*) AS row_count
+FROM   @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE (
+           PATTERN => '.*yellow_tripdata_2025-12\\.parquet'
+       )
+GROUP  BY 1;

@@ -1,0 +1,17 @@
+# =============================================================================
+# Airflow Extra Dependencies — NYC TLC Pipeline
+#
+# Installed on top of the base apache/airflow:2.9.3 image.
+# Pin minor versions; patch versions are intentionally left flexible.
+# =============================================================================
+
+# --- Snowflake ---
+apache-airflow-providers-snowflake>=5.3.0,<6.0.0
+
+# --- dbt Core + Snowflake Adapter ---
+# Used directly inside the containers and via Cosmos
+dbt-snowflake>=1.7.0,<2.0.0
+
+# --- Astronomer Cosmos (Airflow <> dbt bridge) ---
+# Dynamically parses the transform/ dbt project into Airflow tasks (Phase 4)
+astronomer-cosmos[dbt-snowflake]>=1.6.0,<2.0.0

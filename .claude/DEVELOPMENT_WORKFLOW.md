@@ -25,6 +25,10 @@ The `transform/` folder should be treated as its own unit.
 - **Run all tests**: `dbt test`
 - **Generate documentation**: `dbt docs generate && dbt docs serve` (Access via `localhost:8080`)
 
+### Lookup Table Initialization
+Before running your models for the first time, load the static lookup data:
+- `dbt seed` (This creates the `taxi_zone_lookup` table in your Snowflake `silver` schema).
+
 ## 4. Orchestration Workflow (Airflow)
 - **Airflow UI**: Access at `http://localhost:8080` (Default: `admin`/`admin`).
 - **Sync DAGs**: Since we use volume mounting, changes to `orchestration/dags/` will appear in the UI automatically.

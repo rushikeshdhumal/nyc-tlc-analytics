@@ -1,0 +1,44 @@
+# =============================================================================
+# dbt Connection Profiles — NYC TLC BI Pipeline
+#
+# All values are read from environment variables — never hardcoded.
+# Ref: .claude/ENVIRONMENT_MANAGEMENT.md §3
+#
+# USAGE (local):
+#   source .env        # or: direnv allow
+#   dbt debug          # verifies Snowflake connectivity
+#   dbt run            # execute models
+# =============================================================================
+
+nyc_tlc_project:
+  target: dev
+
+  outputs:
+
+    # ── Development ────────────────────────────────────────────────────────
+    dev:
+      type:      snowflake
+      account:   "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user:      "{{ env_var('SNOWFLAKE_USER') }}"
+      password:  "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role:      "{{ env_var('SNOWFLAKE_ROLE') }}"
+      database:  "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      schema:    silver           # default write target; overridden per-model in dbt_project.yml
+      threads:   4
+      client_session_keep_alive: false
+      query_tag: "dbt_dev_run"
+
+    # ── Production (GitHub Actions / Airflow) ──────────────────────────────
+    prod:
+      type:      snowflake
+      account:   "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user:      "{{ env_var('SNOWFLAKE_USER') }}"
+      password:  "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role:      "{{ env_var('SNOWFLAKE_ROLE') }}"
+      database:  "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      schema:    silver
+      threads:   8
+      client_session_keep_alive: false
+      query_tag: "dbt_prod_run"

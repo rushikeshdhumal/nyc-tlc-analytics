@@ -3,7 +3,8 @@
 ## 1. Primary Identifiers & Times
 - **VendorID**: 1=CMT, 2=Curb, 6=Myle, 7=Helix.
 - **tpep_pickup_datetime**: Meter engaged.
-- **tpep_dropoff_datetime**: Meter disengaged.
+  - *Bronze storage*: Parquet timestamps land in VARIANT as INT64 (microseconds since epoch). Casting directly via `::TIMESTAMP` in Bronze returns null/"Invalid date". Use `TO_TIMESTAMP_NTZ(raw_data:tpep_pickup_datetime::NUMBER, 6)` in Silver dbt models.
+- **tpep_dropoff_datetime**: Meter disengaged. Same INT64 cast rule applies.
 - **PULocationID / DOLocationID**: Join with TLC Taxi Zones lookup.
 
 ## 2. Rate & Payment Codes (Critical for Filtering)

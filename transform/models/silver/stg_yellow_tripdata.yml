@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: stg_yellow_tripdata
+    description: >
+      Trusted Silver layer. Type-cast, deduplicated, and filtered Yellow Taxi trips.
+      Source: NYC_TLC_DB.BRONZE.brz_yellow_tripdata.
+      Filters applied: passenger_count > 0, trip_distance > 0, fare_amount > 0,
+      dropoff > pickup, rate_code_id != 99.
+      Dedup key: (vendor_id, tpep_pickup_datetime, pu_location_id).
+
+    columns:
+      - name: trip_id
+        description: "MD5 surrogate key on (vendor_id, tpep_pickup_datetime, pu_location_id)."
+        tests:
+          - unique
+          - not_null
+
+      - name: vendor_id
+        description: "Taxi vendor. 1=CMT, 2=Curb, 6=Myle, 7=Helix."
+        tests:
+          - not_null
+
+      - name: tpep_pickup_datetime
+        description: "Meter engaged timestamp (TIMESTAMP_NTZ, UTC). Cast from INT64 microseconds."
+        tests:
+          - not_null
+
+      - name: tpep_dropoff_datetime
+        description: "Meter disengaged timestamp (TIMESTAMP_NTZ, UTC). Cast from INT64 microseconds."
+        tests:
+          - not_null
+
+      - name: pu_location_id
+        description: "Pickup TLC zone ID. Foreign key to taxi_zone_lookup.LocationID."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: LocationID
+
+      - name: do_location_id
+        description: "Dropoff TLC zone ID. Foreign key to taxi_zone_lookup.LocationID."
+        tests:
+          - not_null
+
+      - name: passenger_count
+        description: "Driver-reported passenger count. Always > 0 after Silver filter."
+        tests:
+          - not_null
+
+      - name: trip_distance
+        description: "Trip distance in miles. Always > 0 after Silver filter."
+        tests:
+          - not_null
+
+      - name: payment_type
+        description: "0=Flex, 1=Card, 2=Cash, 3=No Charge, 4=Dispute, 5=Unknown, 6=Void."
+        tests:
+          - not_null
+
+      - name: fare_amount
+        description: "Base time-and-distance fare. Always > 0 after Silver filter."
+        tests:
+          - not_null
+
+      - name: tip_amount
+        description: "Tip amount. NULL for non-credit-card payments (payment_type != 1)."
+
+      - name: total_amount
+        description: "Sum of all charges. Does not include cash tips."
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Parquet filename from Bronze (e.g. yellow_tripdata_2025-01.parquet)."
+        tests:
+          - not_null
+
+      - name: _ingested_at
+        description: "Timestamp when the row was loaded into Bronze."
+        tests:
+          - not_null
+
+      - name: _batch_id
+        description: "YYYY-MM load batch identifier from Bronze COPY INTO."
+        tests:
+          - not_null

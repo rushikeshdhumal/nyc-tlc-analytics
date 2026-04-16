@@ -1,0 +1,116 @@
+version: 2
+
+models:
+  - name: fct_revenue_per_zone_hourly
+    description: >
+      Gold fact table. Revenue, demand, and efficiency metrics aggregated by
+      pickup hour, pickup zone, and vendor.
+      Grain: one row per (pickup_hour, pu_location_id, vendor_id).
+      Excludes payment_type 3 (No Charge), 4 (Dispute), 6 (Void).
+      tip_amount averages cover credit-card trips only.
+
+    columns:
+      - name: fct_id
+        description: "MD5 surrogate PK on (pickup_hour, pu_location_id, vendor_id)."
+        tests:
+          - unique
+          - not_null
+
+      - name: pickup_hour
+        description: "DATE_TRUNC('HOUR', tpep_pickup_datetime). Grain timestamp."
+        tests:
+          - not_null
+
+      - name: pu_location_id
+        description: "TLC pickup zone ID."
+        tests:
+          - not_null
+
+      - name: vendor_id
+        description: "Taxi vendor. 1=CMT, 2=Curb, 6=Myle, 7=Helix."
+        tests:
+          - not_null
+
+      - name: pickup_borough
+        description: "NYC Borough name from taxi_zone_lookup (e.g. Manhattan)."
+
+      - name: pickup_zone
+        description: "Neighborhood name from taxi_zone_lookup (e.g. JFK Airport)."
+
+      - name: service_zone
+        description: "TLC service zone category (e.g. Yellow Zone, Boro Zone)."
+
+      # ── Volume ──────────────────────────────────────────────────────────────
+      - name: trip_count
+        description: "Number of trips in this hour/zone/vendor bucket."
+        tests:
+          - not_null
+
+      - name: total_passengers
+        description: "SUM(passenger_count) — total riders in this bucket."
+        tests:
+          - not_null
+
+      - name: avg_passengers_per_trip
+        description: "AVG(passenger_count) — capacity utilisation signal."
+        tests:
+          - not_null
+
+      # ── Revenue ─────────────────────────────────────────────────────────────
+      - name: total_revenue
+        description: "SUM(total_amount) — all charges including surcharges, excluding cash tips."
+        tests:
+          - not_null
+
+      - name: total_fare
+        description: "SUM(fare_amount) — base time-and-distance fares only."
+        tests:
+          - not_null
+
+      - name: revenue_per_trip
+        description: "total_revenue / trip_count — average ticket size."
+        tests:
+          - not_null
+
+      # ── Distance & efficiency ────────────────────────────────────────────────
+      - name: total_distance_miles
+        description: "SUM(trip_distance) for this bucket."
+        tests:
+          - not_null
+
+      - name: avg_distance_miles
+        description: "AVG(trip_distance) for this bucket."
+        tests:
+          - not_null
+
+      - name: revenue_per_mile
+        description: "total_revenue / total_distance_miles — zone revenue efficiency."
+        tests:
+          - not_null
+
+      # ── Duration ────────────────────────────────────────────────────────────
+      - name: avg_trip_duration_minutes
+        description: "AVG(DATEDIFF minutes between pickup and dropoff)."
+        tests:
+          - not_null
+
+      # ── Tips ────────────────────────────────────────────────────────────────
+      - name: avg_tip_pct
+        description: "AVG(tip_amount / fare_amount * 100). NULL when no credit-card trips in bucket."
+
+      # ── Payment mix ─────────────────────────────────────────────────────────
+      - name: credit_card_trip_pct
+        description: "Percentage of trips paid by credit card (payment_type = 1)."
+        tests:
+          - not_null
+
+      # ── 2025 surcharges ──────────────────────────────────────────────────────
+      - name: total_congestion_fees
+        description: "SUM(cbd_congestion_fee) — Manhattan Congestion Relief Zone charges (Jan 2025+)."
+        tests:
+          - not_null
+
+      - name: total_airport_fees
+        description: "SUM(airport_fee) — JFK and LaGuardia pickup surcharges."
+        tests:
+          - not_null

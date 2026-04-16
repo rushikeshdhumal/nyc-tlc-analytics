@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: NYC_TLC_DB
+    schema: BRONZE
+    description: "Bronze landing zone — raw VARIANT rows ingested from Azure Blob Storage via Snowflake External Stage."
+    tables:
+      - name: brz_yellow_tripdata
+        description: "1:1 copy of Yellow Taxi Parquet files. Each row is a full Parquet record stored as VARIANT."
+        columns:
+          - name: raw_data
+            description: "Full Parquet row as VARIANT. All source columns accessed via dot-notation (e.g. raw_data:VendorID)."
+          - name: _source_file
+            description: "Stage file name from METADATA$FILENAME (e.g. yellow_tripdata_2025-01.parquet)."
+          - name: _ingested_at
+            description: "SYSDATE() at the time of COPY INTO execution (TIMESTAMP_NTZ)."
+          - name: _batch_id
+            description: "YYYY-MM string identifying the load batch (e.g. 2025-01)."

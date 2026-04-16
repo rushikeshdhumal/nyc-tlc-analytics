@@ -27,3 +27,12 @@
     - Filter out `fare_amount <= 0`.
 - **Temporal Check**: Ensure `tpep_dropoff_datetime > tpep_pickup_datetime`.
 - **CBD Analysis**: Use `cbd_congestion_fee` to identify trips entering/staying in the Manhattan congestion zone for specialized 2025 reports.
+
+## 5. Taxi Zone Lookup (Reference Table)
+- **Source**: Static CSV located in `transform/seeds/taxi_zone_lookup.csv`.
+- **Handling**: Managed via `dbt seed`.
+- **Schema**:
+    - `LocationID`: Primary Key (corresponds to PULocationID/DOLocationID).
+    - `Borough`: NYC Borough (Manhattan, Brooklyn, etc.).
+    - `Zone`: Neighborhood name (e.g., "JFK Airport", "Central Park").
+    - `service_zone`: Category of service (e.g., "Yellow Zone", "Boro Zone").

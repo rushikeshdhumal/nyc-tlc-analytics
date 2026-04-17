@@ -51,50 +51,66 @@ aggregated AS (
             )
         )                                                               AS fct_id,
 
-        -- Dimensions
+        -- Dimensions: time
         s.pickup_hour,
+        s.pickup_hour::DATE                                             AS pickup_date,
+        HOUR(s.pickup_hour)                                             AS hour_of_day,
+        DAYNAME(s.pickup_hour)                                          AS day_of_week,
+
+        -- Dimensions: location
         s.pu_location_id,
+        COALESCE(z.pickup_borough, 'Unknown')                           AS pickup_borough,
+        COALESCE(z.pickup_zone,    'Unknown')                           AS pickup_zone,
+        COALESCE(z.service_zone,   'Unknown')                           AS service_zone,
+
+        -- Dimensions: vendor (decoded for chart labels)
         s.vendor_id,
-        z.pickup_borough,
-        z.pickup_zone,
-        z.service_zone,
+        CASE s.vendor_id
+            WHEN 1 THEN 'CMT'
+            WHEN 2 THEN 'Curb'
+            WHEN 6 THEN 'Myle'
+            WHEN 7 THEN 'Helix'
+            ELSE 'Unknown'
+        END                                                             AS vendor_name,
 
         -- Volume
         COUNT(*)                                                        AS trip_count,
         SUM(s.passenger_count)                                          AS total_passengers,
-        AVG(s.passenger_count)                                          AS avg_passengers_per_trip,
+        ROUND(AVG(s.passenger_count), 2)                                AS avg_passengers_per_trip,
 
         -- Revenue
-        SUM(s.total_amount)                                             AS total_revenue,
-        SUM(s.fare_amount)                                              AS total_fare,
-        SUM(s.total_amount) / NULLIF(COUNT(*), 0)                       AS revenue_per_trip,
+        ROUND(SUM(s.total_amount), 2)                                   AS total_revenue,
+        ROUND(SUM(s.fare_amount), 2)                                    AS total_fare,
+        ROUND(SUM(s.total_amount) / NULLIF(COUNT(*), 0), 2)             AS revenue_per_trip,
 
         -- Distance & efficiency
-        SUM(s.trip_distance)                                            AS total_distance_miles,
-        AVG(s.trip_distance)                                            AS avg_distance_miles,
-        SUM(s.total_amount) / NULLIF(SUM(s.trip_distance), 0)           AS revenue_per_mile,
+        ROUND(SUM(s.trip_distance), 2)                                  AS total_distance_miles,
+        ROUND(AVG(s.trip_distance), 2)                                  AS avg_distance_miles,
+        ROUND(SUM(s.total_amount) / NULLIF(SUM(s.trip_distance), 0), 2) AS revenue_per_mile,
 
         -- Duration
-        AVG(
+        ROUND(AVG(
             DATEDIFF('minute', s.tpep_pickup_datetime, s.tpep_dropoff_datetime)
-        )                                                               AS avg_trip_duration_minutes,
+        ), 1)                                                           AS avg_trip_duration_minutes,
 
         -- Tips (credit card trips only — NULL rows excluded by AVG automatically)
-        AVG(
+        ROUND(AVG(
             CASE
                 WHEN s.tip_amount IS NOT NULL AND s.fare_amount > 0
                 THEN (s.tip_amount / s.fare_amount) * 100.0
                 ELSE NULL
             END
-        )                                                               AS avg_tip_pct,
+        ), 1)                                                           AS avg_tip_pct,
 
         -- Payment mix
-        SUM(CASE WHEN s.payment_type = 1 THEN 1 ELSE 0 END)
-            * 100.0 / NULLIF(COUNT(*), 0)                               AS credit_card_trip_pct,
+        ROUND(
+            SUM(CASE WHEN s.payment_type = 1 THEN 1 ELSE 0 END)
+                * 100.0 / NULLIF(COUNT(*), 0),
+        1)                                                              AS credit_card_trip_pct,
 
         -- 2025 surcharges (CBD congestion pricing + airport fees)
-        SUM(COALESCE(s.cbd_congestion_fee, 0))                          AS total_congestion_fees,
-        SUM(COALESCE(s.airport_fee, 0))                                 AS total_airport_fees
+        ROUND(SUM(COALESCE(s.cbd_congestion_fee, 0)), 2)                AS total_congestion_fees,
+        ROUND(SUM(COALESCE(s.airport_fee, 0)), 2)                       AS total_airport_fees
 
     FROM silver AS s
     LEFT JOIN zones AS z

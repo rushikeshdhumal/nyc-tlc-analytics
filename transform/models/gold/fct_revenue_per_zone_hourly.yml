@@ -21,24 +21,50 @@ models:
         tests:
           - not_null
 
+      - name: pickup_date
+        description: "Calendar date of the pickup hour. Used for daily trend charts."
+        tests:
+          - not_null
+
+      - name: hour_of_day
+        description: "Hour extracted from pickup_hour (0–23). Used for intraday heatmaps."
+        tests:
+          - not_null
+
+      - name: day_of_week
+        description: "Day name (Mon, Tue, …, Sun). Used for weekly demand patterns."
+        tests:
+          - not_null
+
       - name: pu_location_id
         description: "TLC pickup zone ID."
         tests:
           - not_null
 
-      - name: vendor_id
-        description: "Taxi vendor. 1=CMT, 2=Curb, 6=Myle, 7=Helix."
+      - name: pickup_borough
+        description: "NYC Borough name from taxi_zone_lookup (e.g. Manhattan). 'Unknown' if zone has no lookup match."
         tests:
           - not_null
 
-      - name: pickup_borough
-        description: "NYC Borough name from taxi_zone_lookup (e.g. Manhattan)."
-
       - name: pickup_zone
-        description: "Neighborhood name from taxi_zone_lookup (e.g. JFK Airport)."
+        description: "Neighborhood name from taxi_zone_lookup (e.g. JFK Airport). 'Unknown' if zone has no lookup match."
+        tests:
+          - not_null
 
       - name: service_zone
-        description: "TLC service zone category (e.g. Yellow Zone, Boro Zone)."
+        description: "TLC service zone category (e.g. Yellow Zone, Boro Zone). 'Unknown' if zone has no lookup match."
+        tests:
+          - not_null
+
+      - name: vendor_id
+        description: "Taxi vendor integer code. 1=CMT, 2=Curb, 6=Myle, 7=Helix."
+        tests:
+          - not_null
+
+      - name: vendor_name
+        description: "Human-readable vendor name decoded from vendor_id (CMT, Curb, Myle, Helix, Unknown)."
+        tests:
+          - not_null
 
       # ── Volume ──────────────────────────────────────────────────────────────
       - name: trip_count

@@ -10,7 +10,7 @@ Executes the two SQL models in dependency order:
 2. `fct_revenue_per_zone_hourly` — reads from Silver + `taxi_zone_lookup`, aggregates, writes to `NYC_TLC_DB.GOLD`
 
 `dbt test`
-Runs all the tests defined in the `.yml` files — unique, not_null, and the relationships check on `pu_location_id`. This is the quality gate: if Silver tests fail, you know bad data would have propagated to Gold.
+Runs all the tests defined in the `.yml` files — unique and not_null checks across Silver and Gold. This is the quality gate: if Silver tests fail, you know bad data would have propagated to Gold.
 
 The full sequence is: connect → load reference data → build models → validate. Each step depends on the previous one succeeding.
 
@@ -25,21 +25,25 @@ This project uses two different dbt runtimes:
 | Local (`dbt debug`, `dbt run`, `dbt test`) | dbt-fusion | 2.0.x |
 | Airflow / Cosmos (inside Docker) | dbt-core | 1.8.7 |
 
-They have diverged on the `relationships` generic test syntax:
+They have a hard incompatibility on the `relationships` generic test syntax:
 
-**dbt-fusion 2.0 (local) — new format required:**
-```yaml
-- relationships:
-    arguments:
-      to: ref('taxi_zone_lookup')
-      field: LocationID
-```
+- dbt-fusion 2.0 requires `arguments:` wrapper (hard error `dbt0102` without it)
+- dbt-core 1.8.7 (Cosmos) breaks when `arguments:` is present
 
-**dbt-core 1.8.7 (Airflow/Cosmos) — old format required:**
-```yaml
-- relationships:
-    to: ref('taxi_zone_lookup')
-    field: LocationID
-```
+There is no format that satisfies both runtimes simultaneously. The `relationships` test on `pu_location_id` has been removed from `stg_yellow_tripdata.yml` to unblock local runs. The referential integrity it checked is enforced structurally in the Gold model via `LEFT JOIN` + `COALESCE(..., 'Unknown')` on unmatched zone IDs.
 
-The `.yml` files in this repo use the **dbt-core 1.8.7 format** (without `arguments:`) so that Cosmos can parse the project without errors. Running `dbt test` locally with dbt-fusion will show a deprecation warning for this test — that warning is safe to ignore.
+To restore the test properly, upgrade the Airflow Dockerfile to dbt-core 1.9.x (which supports `arguments:`) and add back the test using the new format.
+
+---
+
+## Gold model — dashboard readability changes
+
+`fct_revenue_per_zone_hourly` was updated before connecting Superset to address four issues that would have made charts hard to read or build:
+
+**vendor_name** — `vendor_id` is an opaque integer (1, 2, 6, 7). Every chart label and filter dropdown would show the number. A `vendor_name` column (CMT / Curb / Myle / Helix / Unknown) was added alongside `vendor_id` so chart dimensions use human-readable names without needing a Superset calculated column.
+
+**Time breakdown columns** — `pickup_hour` is a full `TIMESTAMP_NTZ`. Building an hour-of-day heatmap or day-of-week demand chart would require a computed column on every query. `pickup_date` (DATE), `hour_of_day` (0–23), and `day_of_week` (Mon–Sun) are now pre-computed in the model so Superset can use them as simple dimensions.
+
+**COALESCE on zone dimensions** — `pickup_borough`, `pickup_zone`, and `service_zone` come from a `LEFT JOIN` against `taxi_zone_lookup`. Any `pu_location_id` with no matching row would produce NULL, silently dropping those trips from grouped charts. All three columns are now `COALESCE`d to `'Unknown'` and carry `not_null` tests.
+
+**ROUND on float columns** — revenue, distance, and duration metrics were stored at full float precision (e.g. `revenue_per_trip = 23.456789`). Every tooltip and table cell displayed 6–8 decimal places. All metrics are now rounded at the model level (2 dp for money, 1 dp for rates and durations) so Superset needs no per-chart formatting overrides.

@@ -8,12 +8,24 @@
 --
 -- Weighted averages are used for rate metrics so the daily figures are
 -- mathematically consistent with the underlying hourly data.
+--
+-- Incremental strategy: on each run only hourly rows with a pickup_date
+-- beyond the current daily table's maximum are aggregated and merged in.
 -- =============================================================================
+
+{{ config(
+    materialized         = 'incremental',
+    unique_key           = 'fct_id',
+    incremental_strategy = 'merge'
+) }}
 
 WITH hourly AS (
 
     SELECT *
     FROM {{ ref('fct_revenue_per_zone_hourly') }}
+    {% if is_incremental() %}
+    WHERE pickup_date > (SELECT MAX(pickup_date) FROM {{ this }})
+    {% endif %}
 
 ),
 

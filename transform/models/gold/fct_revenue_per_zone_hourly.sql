@@ -5,7 +5,16 @@
 -- Joins with taxi_zone_lookup (dbt seed) for human-readable zone names.
 -- Excludes payment_type 3 (No Charge), 4 (Dispute), 6 (Void) from revenue.
 -- tip_amount is already NULL for non-credit-card rows in Silver.
+--
+-- Incremental strategy: on each run only Silver rows with a pickup_hour
+-- beyond the current Gold table's maximum are aggregated and merged in.
 -- =============================================================================
+
+{{ config(
+    materialized         = 'incremental',
+    unique_key           = 'fct_id',
+    incremental_strategy = 'merge'
+) }}
 
 WITH silver AS (
 
@@ -25,6 +34,9 @@ WITH silver AS (
         tpep_dropoff_datetime
     FROM {{ ref('stg_yellow_tripdata') }}
     WHERE payment_type NOT IN (3, 4, 6)     -- exclude no-charge, dispute, void
+    {% if is_incremental() %}
+    AND DATE_TRUNC('HOUR', tpep_pickup_datetime) > (SELECT MAX(pickup_hour) FROM {{ this }})
+    {% endif %}
 
 ),
 

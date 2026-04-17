@@ -5,9 +5,20 @@
 -- deduplicates on (vendor_id, tpep_pickup_datetime, pu_location_id), and
 -- removes trips that fail data quality rules from DATA_LINEAGE_CONTRACTS.md.
 --
+-- Incremental strategy: on each run only Bronze rows whose _batch_id is
+-- greater than the maximum _batch_id already in Silver are processed.
+-- _batch_id is YYYY-MM (lexicographic ordering works correctly).
+-- First run (or dbt run --full-refresh) processes all Bronze rows.
+--
 -- Timestamp note: Parquet timestamps land in VARIANT as INT64 microseconds.
 -- Use TO_TIMESTAMP_NTZ(::NUMBER, 6) — not ::TIMESTAMP. See DATA_DICTIONARY_YELLOW.md.
 -- =============================================================================
+
+{{ config(
+    materialized         = 'incremental',
+    unique_key           = 'trip_id',
+    incremental_strategy = 'merge'
+) }}
 
 WITH source AS (
 
@@ -17,6 +28,9 @@ WITH source AS (
         _ingested_at,
         _batch_id
     FROM {{ source('bronze', 'brz_yellow_tripdata') }}
+    {% if is_incremental() %}
+    WHERE _batch_id > (SELECT MAX(_batch_id) FROM {{ this }})
+    {% endif %}
 
 ),
 

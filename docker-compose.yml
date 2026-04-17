@@ -166,6 +166,7 @@ services:
     command: bash -c "superset db upgrade && superset fab create-admin --username $${SUPERSET_ADMIN_USERNAME:-admin} --firstname Admin --lastname User --email $${SUPERSET_ADMIN_EMAIL:-admin@localhost} --password $${SUPERSET_ADMIN_PASSWORD:-admin} || true && superset init"
     volumes:
       - superset-home:/app/superset_home
+      - ./viz/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
     networks:
       - backend
     restart: on-failure
@@ -185,6 +186,7 @@ services:
       - superset-home:/app/superset_home
       # Dashboard JSON exports/imports live here
       - ./viz/superset:/app/superset_exports
+      - ./viz/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
     ports:
       - "8088:8088"
     healthcheck:

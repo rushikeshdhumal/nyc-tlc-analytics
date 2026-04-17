@@ -36,9 +36,8 @@ models:
         tests:
           - not_null
           - relationships:
-              arguments:
-                to: ref('taxi_zone_lookup')
-                field: LocationID
+              to: ref('taxi_zone_lookup')
+              field: LocationID
 
       - name: do_location_id
         description: "Dropoff TLC zone ID. Foreign key to taxi_zone_lookup.LocationID."

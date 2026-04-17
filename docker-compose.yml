@@ -26,7 +26,6 @@
 #   ./viz/superset         → /app/superset_exports  (dashboard JSON exports)
 # =============================================================================
 
-version: '3.8'
 
 # ---------------------------------------------------------------------------
 # YAML ANCHOR — shared Airflow config to avoid repeating env + volumes
@@ -110,17 +109,13 @@ services:
   airflow-init:
     <<: *airflow-common
     command: >
-      bash -c "
-        airflow db migrate &&
-        airflow users create \
-          --username \"${AIRFLOW_ADMIN_USERNAME:-admin}\" \
-          --password \"${AIRFLOW_ADMIN_PASSWORD:-admin}\" \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email \"${AIRFLOW_ADMIN_EMAIL:-admin@localhost}\" \
-        || true
-      "
+      bash -c 'airflow db migrate && airflow users create
+      --username ${AIRFLOW_ADMIN_USERNAME:-admin}
+      --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      --firstname Admin
+      --lastname User
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL:-admin@localhost} || true'
     restart: on-failure
 
   # ── Airflow Webserver  →  http://localhost:8080 ──────────────────────────
@@ -160,18 +155,7 @@ services:
     env_file: .env
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
-    command: >
-      bash -c "
-        superset db upgrade &&
-        superset fab create-admin \
-          --username \"${SUPERSET_ADMIN_USERNAME:-admin}\" \
-          --firstname Admin \
-          --lastname User \
-          --email \"${SUPERSET_ADMIN_EMAIL:-admin@localhost}\" \
-          --password \"${SUPERSET_ADMIN_PASSWORD:-admin}\" \
-        || true &&
-        superset init
-      "
+    command: bash -c "superset db upgrade && superset fab create-admin --username $${SUPERSET_ADMIN_USERNAME:-admin} --firstname Admin --lastname User --email $${SUPERSET_ADMIN_EMAIL:-admin@localhost} --password $${SUPERSET_ADMIN_PASSWORD:-admin} || true && superset init"
     volumes:
       - superset-home:/app/superset_home
     networks:

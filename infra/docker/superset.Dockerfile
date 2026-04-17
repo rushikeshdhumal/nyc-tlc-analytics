@@ -15,7 +15,9 @@ FROM apache/superset:3.1.3
 USER root
 RUN pip install --no-cache-dir \
     "snowflake-sqlalchemy==1.5.3" \
-    "snowflake-connector-python[pandas]>=3.6.0"
+    "snowflake-connector-python>=3.6.0" \
+    "pandas>=2.0.3,<2.1" \
+    "cryptography>=42.0.4,<43.0.0"
 
 # Return to the superset runtime user
 USER superset

@@ -1,28 +1,39 @@
 """
-ingest_nyc_taxi_raw — Phase 2 Bronze ingestion DAG
+ingest_nyc_taxi_raw — Full monthly pipeline DAG (Phase 2 + Phase 4)
 
 Runs on the 1st of each month (catchup=True to backfill from Jan 2025).
-For each run, the logical_date gives the target month.
+The logical_date gives the target month.
 
 Task graph:
-    create_bronze_table >> copy_into_bronze >> validate_bronze_load
+    create_bronze_table
+        >> copy_into_bronze
+        >> validate_bronze_load
+        >> dbt_transform (Cosmos DbtTaskGroup)
+              ├─ stg_yellow_tripdata.run → stg_yellow_tripdata.test
+              └─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
+
+Cosmos runs Silver tests before building Gold, so bad Silver data never
+reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
 """
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
 from airflow.decorators import dag, task
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from cosmos import DbtTaskGroup, ExecutionConfig, ProfileConfig, ProjectConfig, RenderConfig
+from cosmos.constants import ExecutionMode, TestBehavior
+from cosmos.profiles import SnowflakeUserPasswordProfileMapping
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_SQL_DIR = Path(__file__).parent.parent / "include" / "sql"
+_SQL_DIR        = Path(__file__).parent.parent / "include" / "sql"
+_DBT_PROJECT    = Path("/opt/airflow/transform")
 _SNOWFLAKE_CONN = "snowflake_default"
-_WAREHOUSE = "COMPUTE_WH"
+_WAREHOUSE      = "COMPUTE_WH"
 
 
 def _load_sql(filename: str) -> str:
@@ -30,27 +41,44 @@ def _load_sql(filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Cosmos config — reused by the DbtTaskGroup
+# ---------------------------------------------------------------------------
+_profile_config = ProfileConfig(
+    profile_name="nyc_tlc_project",
+    target_name="dev",
+    profile_mapping=SnowflakeUserPasswordProfileMapping(
+        conn_id=_SNOWFLAKE_CONN,
+        profile_args={
+            "database": "NYC_TLC_DB",
+            "schema":   "silver",
+            "warehouse": _WAREHOUSE,
+            "role":     "DE_ROLE",
+        },
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
 # DAG
 # ---------------------------------------------------------------------------
 @dag(
     dag_id="ingest_nyc_taxi_raw",
-    description="Load Yellow Taxi Parquet files from Azure Blob into Bronze (VARIANT).",
+    description="End-to-end monthly pipeline: Bronze COPY INTO → dbt Silver → dbt Gold.",
     schedule="0 6 1 * *",       # 1st of every month at 06:00 UTC
     start_date=datetime(2025, 1, 1),
-    catchup=True,               # backfill all months from 2025-01 to now
-    max_active_runs=1,          # prevent concurrent backfill runs hammering Snowflake
-    tags=["bronze", "ingestion", "nyc-tlc"],
+    catchup=True,
+    max_active_runs=1,
+    tags=["bronze", "silver", "gold", "ingestion", "nyc-tlc"],
 )
 def ingest_nyc_taxi_raw() -> None:
+
+    # ── Phase 2: Bronze ingestion ─────────────────────────────────────────
 
     @task()
     def create_bronze_table() -> None:
         """Ensure brz_yellow_tripdata exists before any COPY INTO runs."""
         hook = SnowflakeHook(snowflake_conn_id=_SNOWFLAKE_CONN)
-        hook.run(
-            _load_sql("create_brz_yellow_tripdata.sql"),
-            autocommit=True,
-        )
+        hook.run(_load_sql("create_brz_yellow_tripdata.sql"), autocommit=True)
 
     @task()
     def copy_into_bronze(logical_date: str) -> dict[str, object]:
@@ -58,9 +86,9 @@ def ingest_nyc_taxi_raw() -> None:
         Run COPY INTO for the month represented by logical_date (YYYY-MM-DD).
         Returns Snowflake's load summary for downstream validation.
         """
-        month = logical_date[:7]                          # '2025-01'
-        batch_id = month                                  # reuse as batch identifier
-        pattern = rf".*yellow_tripdata_{month}\.parquet"
+        month    = logical_date[:7]
+        batch_id = month
+        pattern  = rf".*yellow_tripdata_{month}\.parquet"
 
         sql = (
             _load_sql("copy_into_bronze.sql")
@@ -69,7 +97,6 @@ def ingest_nyc_taxi_raw() -> None:
         )
 
         hook = SnowflakeHook(snowflake_conn_id=_SNOWFLAKE_CONN)
-        # USE WAREHOUSE inside the session to ensure cost guard is in place
         hook.run(f"USE WAREHOUSE {_WAREHOUSE};", autocommit=True)
         results = hook.get_records(sql)
 
@@ -77,28 +104,27 @@ def ingest_nyc_taxi_raw() -> None:
         rows_error  = sum(int(r[4]) for r in results) if results else 0
 
         return {
-            "month": month,
-            "rows_loaded": rows_loaded,
-            "rows_error": rows_error,
-            "files_processed": len(results),
+            "month":            month,
+            "rows_loaded":      rows_loaded,
+            "rows_error":       rows_error,
+            "files_processed":  len(results),
         }
 
     @task()
     def validate_bronze_load(load_summary: dict[str, object]) -> None:
         """
-        Fail the task — and therefore the DAG run — if no rows were loaded or
-        if any rows errored. Acts as a lightweight quality gate before Phase 3.
+        Fail the DAG run if no rows were loaded or if any rows errored.
+        Prevents dbt_transform from running against an empty/broken Bronze table.
         """
-        month        = load_summary["month"]
-        rows_loaded  = load_summary["rows_loaded"]
-        rows_error   = load_summary["rows_error"]
+        month       = load_summary["month"]
+        rows_loaded = load_summary["rows_loaded"]
+        rows_error  = load_summary["rows_error"]
 
         if rows_error > 0:
             raise ValueError(
                 f"[{month}] COPY INTO reported {rows_error} error rows. "
                 "Inspect COPY_HISTORY in Snowflake before retrying."
             )
-
         if rows_loaded == 0:
             raise ValueError(
                 f"[{month}] No rows loaded. "
@@ -111,12 +137,24 @@ def ingest_nyc_taxi_raw() -> None:
             f"{rows_loaded:,} rows across {load_summary['files_processed']} file(s)."
         )
 
-    # -----------------------------------------------------------------------
-    # Wire the graph
-    # -----------------------------------------------------------------------
+    # ── Phase 4: dbt Silver + Gold via Cosmos ─────────────────────────────
+
+    dbt_transform = DbtTaskGroup(
+        group_id="dbt_transform",
+        project_config=ProjectConfig(_DBT_PROJECT),
+        profile_config=_profile_config,
+        execution_config=ExecutionConfig(execution_mode=ExecutionMode.LOCAL),
+        render_config=RenderConfig(
+            # Run Silver tests before Gold runs — bad Silver data never reaches Gold
+            test_behavior=TestBehavior.AFTER_EACH,
+        ),
+    )
+
+    # ── Wire the graph ────────────────────────────────────────────────────
+
     summary = copy_into_bronze(logical_date="{{ ds }}")
 
-    create_bronze_table() >> summary >> validate_bronze_load(summary)
+    create_bronze_table() >> summary >> validate_bronze_load(summary) >> dbt_transform
 
 
 ingest_nyc_taxi_raw()

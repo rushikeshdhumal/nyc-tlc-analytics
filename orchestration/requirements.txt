@@ -2,16 +2,26 @@
 # Airflow Extra Dependencies — NYC TLC Pipeline
 #
 # Installed on top of the base apache/airflow:2.9.3 image.
-# Pin minor versions; patch versions are intentionally left flexible.
+# All direct and conflict-prone transitive dependencies are pinned for
+# reproducible builds. Upgrade intentionally — do not use open ranges.
+#
+# Known constraints:
+#   - protobuf must be 4.x: dbt-core 1.8.x requires MessageToJson(
+#     always_print_fields_with_no_presence) added in protobuf 4.x.
+#     Airflow 2.9.3 allows protobuf 4.x (!=4.0.*,!=4.21.*,<5.0).
+#   - astronomer-cosmos [dbt-snowflake] extra omitted: dbt-snowflake is
+#     installed explicitly in the step above, avoiding ResolutionTooDeep.
 # =============================================================================
 
-# --- Snowflake ---
-apache-airflow-providers-snowflake>=5.3.0,<6.0.0
+# --- Snowflake provider ---
+apache-airflow-providers-snowflake==5.6.0
 
-# --- dbt Core + Snowflake Adapter ---
-# Used directly inside the containers and via Cosmos
-dbt-snowflake>=1.7.0,<2.0.0
+# --- dbt ---
+dbt-core==1.8.7
+dbt-snowflake==1.8.4
 
 # --- Astronomer Cosmos (Airflow <> dbt bridge) ---
-# Dynamically parses the transform/ dbt project into Airflow tasks (Phase 4)
-astronomer-cosmos[dbt-snowflake]>=1.6.0,<2.0.0
+astronomer-cosmos==1.8.0
+
+# --- Protobuf: force 4.x for dbt-core 1.8.x compatibility ---
+protobuf==4.25.3

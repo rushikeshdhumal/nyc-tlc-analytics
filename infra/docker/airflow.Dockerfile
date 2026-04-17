@@ -1,15 +1,19 @@
 # =============================================================================
 # NYC TLC Pipeline — Airflow Service Image
-# Base: Apache Airflow 2.9.3 (Python 3.11)
+# Base: Apache Airflow 2.9.3 (Python 3.12)
 #
 # Extends the official image with:
-#   - dbt-snowflake  (transformation layer)
-#   - astronomer-cosmos  (Airflow <> dbt bridge, Phase 4)
-#   - apache-airflow-providers-snowflake  (SnowflakeOperator / Hook)
+#   - apache-airflow-providers-snowflake
+#   - dbt-core + dbt-snowflake  (transformation layer)
+#   - astronomer-cosmos          (Airflow <> dbt bridge, Phase 4)
+#   - protobuf 4.x               (required by dbt-core 1.8.x)
+#
+# Dependencies are installed in two steps to avoid pip ResolutionTooDeep:
+#   1. Main packages (snowflake provider, dbt, cosmos)
+#   2. protobuf pinned last to guarantee 4.x wins over the base image's 3.x
 # =============================================================================
 FROM apache/airflow:2.9.3
 
-# Switch to root only for OS-level dependencies
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -18,9 +22,16 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Back to the unprivileged airflow user for pip installs
 USER airflow
 
-# Copy and install Python dependencies defined in orchestration/requirements.txt
 COPY orchestration/requirements.txt /tmp/airflow-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/airflow-requirements.txt
+
+# Install all pinned dependencies except protobuf
+RUN pip install --no-cache-dir \
+    apache-airflow-providers-snowflake==5.6.0 \
+    dbt-core==1.8.7 \
+    dbt-snowflake==1.8.4 \
+    astronomer-cosmos==1.8.0
+
+# Pin protobuf last — must win over the base image's 3.x
+RUN pip install --no-cache-dir "protobuf==4.25.3"

@@ -13,3 +13,33 @@ Executes the two SQL models in dependency order:
 Runs all the tests defined in the `.yml` files — unique, not_null, and the relationships check on `pu_location_id`. This is the quality gate: if Silver tests fail, you know bad data would have propagated to Gold.
 
 The full sequence is: connect → load reference data → build models → validate. Each step depends on the previous one succeeding.
+
+---
+
+## dbt-fusion vs dbt-core syntax divergence
+
+This project uses two different dbt runtimes:
+
+| Context | Runtime | Version |
+|---|---|---|
+| Local (`dbt debug`, `dbt run`, `dbt test`) | dbt-fusion | 2.0.x |
+| Airflow / Cosmos (inside Docker) | dbt-core | 1.8.7 |
+
+They have diverged on the `relationships` generic test syntax:
+
+**dbt-fusion 2.0 (local) — new format required:**
+```yaml
+- relationships:
+    arguments:
+      to: ref('taxi_zone_lookup')
+      field: LocationID
+```
+
+**dbt-core 1.8.7 (Airflow/Cosmos) — old format required:**
+```yaml
+- relationships:
+    to: ref('taxi_zone_lookup')
+    field: LocationID
+```
+
+The `.yml` files in this repo use the **dbt-core 1.8.7 format** (without `arguments:`) so that Cosmos can parse the project without errors. Running `dbt test` locally with dbt-fusion will show a deprecation warning for this test — that warning is safe to ignore.

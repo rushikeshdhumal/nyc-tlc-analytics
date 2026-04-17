@@ -25,3 +25,7 @@ astronomer-cosmos==1.8.0
 
 # --- Protobuf: force 4.x for dbt-core 1.8.x compatibility ---
 protobuf==4.25.3
+
+# --- Azure Blob Storage (download_to_azure DAG task) ---
+azure-storage-blob==12.22.0
+requests==2.32.3

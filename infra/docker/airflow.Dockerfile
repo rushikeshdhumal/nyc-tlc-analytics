@@ -7,9 +7,11 @@
 #   - dbt-core + dbt-snowflake  (transformation layer)
 #   - astronomer-cosmos          (Airflow <> dbt bridge, Phase 4)
 #   - protobuf 4.x               (required by dbt-core 1.8.x)
+#   - azure-storage-blob         (download_to_azure DAG task)
+#   - requests                   (TLC CDN download)
 #
 # Dependencies are installed in two steps to avoid pip ResolutionTooDeep:
-#   1. Main packages (snowflake provider, dbt, cosmos)
+#   1. Main packages (snowflake provider, dbt, cosmos, azure)
 #   2. protobuf pinned last to guarantee 4.x wins over the base image's 3.x
 # =============================================================================
 FROM apache/airflow:2.9.3
@@ -31,7 +33,9 @@ RUN pip install --no-cache-dir \
     apache-airflow-providers-snowflake==5.6.0 \
     dbt-core==1.8.7 \
     dbt-snowflake==1.8.4 \
-    astronomer-cosmos==1.8.0
+    astronomer-cosmos==1.8.0 \
+    azure-storage-blob==12.22.0 \
+    requests==2.32.3
 
 # Pin protobuf last — must win over the base image's 3.x
 RUN pip install --no-cache-dir "protobuf==4.25.3"

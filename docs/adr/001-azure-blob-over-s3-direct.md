@@ -81,9 +81,10 @@ authentication, then staged in Azure Blob Storage under our control.
   ecosystem, simplifying networking and access control.
 
 **Trade-offs**
-- An explicit upload step (`upload_to_azure.py`) is now required before
-  new monthly files are available to Snowflake. This will be automated
-  as part of the Phase 2 Airflow DAG (`ingest_nyc_taxi_raw`).
+- ~~An explicit upload step (`upload_to_azure.py`) is now required before
+  new monthly files are available to Snowflake.~~ **Automated** — the
+  `download_to_azure` task in `ingest_nyc_taxi_raw` handles this on every
+  scheduled run. See ADR-004.
 - Azure Blob Storage incurs minor storage costs (~$0.02/GB/month for LRS),
   acceptable for a ~15 GB dataset.
 

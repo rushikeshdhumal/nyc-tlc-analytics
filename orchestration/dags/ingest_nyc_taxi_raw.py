@@ -1,16 +1,21 @@
 """
-ingest_nyc_taxi_raw — Full monthly pipeline DAG (Phase 2 + Phase 4)
+ingest_nyc_taxi_raw — Full monthly pipeline DAG
 
 Runs on the 1st of each month (catchup=True to backfill from Jan 2025).
-The logical_date gives the target month.
+TLC publishes data with a ~2 month lag. download_to_azure checks a 6-month
+rolling window so any month missed due to TLC delays is caught automatically
+by the next run (e.g. June 2026 checks Apr, Mar, Feb, Jan, Dec, Nov 2026/25).
+copy_into_bronze targets logical_date minus 2 months.
 
 Task graph:
-    create_bronze_table
+    download_to_azure       — download TLC parquet from CDN → Azure Blob
+        >> create_bronze_table
         >> copy_into_bronze
         >> validate_bronze_load
         >> dbt_transform (Cosmos DbtTaskGroup)
               ├─ stg_yellow_tripdata.run → stg_yellow_tripdata.test
-              └─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
+              ├─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
+              └─ fct_revenue_daily.run → fct_revenue_daily.test
 
 Cosmos runs Silver tests before building Gold, so bad Silver data never
 reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
@@ -18,11 +23,15 @@ reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from airflow.decorators import dag, task
+from airflow.exceptions import AirflowSkipException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from azure.storage.blob import BlobServiceClient
 from cosmos import DbtTaskGroup, ExecutionConfig, ProfileConfig, ProjectConfig, RenderConfig
 from cosmos.constants import ExecutionMode, TestBehavior
 from cosmos.profiles import SnowflakeUserPasswordProfileMapping
@@ -34,10 +43,33 @@ _SQL_DIR        = Path(__file__).parent.parent / "include" / "sql"
 _DBT_PROJECT    = Path("/opt/airflow/transform")
 _SNOWFLAKE_CONN = "snowflake_default"
 _WAREHOUSE      = "COMPUTE_WH"
+_TLC_CDN_URL    = (
+    "https://d37ci6vzurychx.cloudfront.net/trip-data/"
+    "yellow_tripdata_{month}.parquet"
+)
+_CHUNK_SIZE          = 8 * 1024 * 1024  # 8 MB streaming chunks
+_TLC_RELEASE_LAG     = 2               # months TLC takes to publish data
 
 
 def _load_sql(filename: str) -> str:
     return (_SQL_DIR / filename).read_text()
+
+
+def _target_month(logical_date: str) -> str:
+    """
+    Return the YYYY-MM string for the TLC file this DAG run should process.
+
+    TLC publishes data with a ~2 month lag, so the run for May 2026 should
+    download and load March 2026 data, not May 2026.
+    """
+    from datetime import date
+    d = date.fromisoformat(logical_date[:10])
+    month = d.month - _TLC_RELEASE_LAG
+    year  = d.year
+    if month <= 0:
+        month += 12
+        year  -= 1
+    return f"{year}-{month:02d}"
 
 
 # ---------------------------------------------------------------------------
@@ -65,12 +97,90 @@ _profile_config = ProfileConfig(
     dag_id="ingest_nyc_taxi_raw",
     description="End-to-end monthly pipeline: Bronze COPY INTO → dbt Silver → dbt Gold.",
     schedule="0 6 1 * *",       # 1st of every month at 06:00 UTC
-    start_date=datetime(2025, 1, 1),
+    start_date=datetime(2025, 7, 1),
     catchup=True,
     max_active_runs=1,
     tags=["bronze", "silver", "gold", "ingestion", "nyc-tlc"],
 )
 def ingest_nyc_taxi_raw() -> None:
+
+    # ── Phase 1: Download new parquet → Azure Blob Storage ───────────────
+
+    @task()
+    def download_to_azure(logical_date: str) -> None:
+        """
+        Check a 6-month rolling window ending at (logical_date - TLC lag) and
+        download any parquet files missing from Azure Blob Storage.
+
+        Window example for a June 2026 run (lag=2):
+            checks: 2026-04, 2026-03, 2026-02, 2026-01, 2025-12, 2025-11
+            downloads any that are absent from Azure.
+
+        This ensures a month missed due to TLC publishing delays is caught
+        automatically by the next scheduled run — no manual intervention needed.
+
+        Raises AirflowSkipException only if the primary target month (newest
+        in the window) returns 404 — meaning TLC is still delayed and there
+        is genuinely no new data to process this run.
+        """
+        from datetime import date
+
+        account   = os.environ["AZURE_STORAGE_ACCOUNT"]
+        container = os.environ["AZURE_STORAGE_CONTAINER"]
+        sas_token = os.environ["AZURE_SAS_TOKEN"]
+
+        az_client = BlobServiceClient(
+            account_url=f"https://{account}.blob.core.windows.net",
+            credential=sas_token,
+        )
+
+        # Build the 6-month window: target month down to target - 5
+        primary_month = _target_month(logical_date)
+        d = date.fromisoformat(primary_month + "-01")
+        window: list[str] = []
+        for i in range(6):
+            window.append(f"{d.year}-{d.month:02d}")
+            month_num = d.month - 1 or 12
+            year      = d.year - (1 if d.month == 1 else 0)
+            d = date(year, month_num, 1)
+
+        primary_published = False
+
+        for month in window:
+            filename = f"yellow_tripdata_{month}.parquet"
+            blob     = az_client.get_blob_client(container=container, blob=filename)
+
+            if blob.exists():
+                print(f"[{month}] Already in Azure — skipping.")
+                if month == primary_month:
+                    primary_published = True
+                continue
+
+            url = _TLC_CDN_URL.format(month=month)
+            print(f"[{month}] Downloading {url}")
+            with requests.get(url, stream=True, timeout=300) as resp:
+                if resp.status_code == 404:
+                    print(f"[{month}] Not published yet (HTTP 404) — skipping.")
+                    continue
+                resp.raise_for_status()
+
+                chunks, downloaded = [], 0
+                for chunk in resp.iter_content(chunk_size=_CHUNK_SIZE):
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                data = b"".join(chunks)
+
+            print(f"[{month}] Downloaded {downloaded / 1_048_576:.1f} MB — uploading.")
+            blob.upload_blob(data, overwrite=False)
+            print(f"[{month}] Uploaded → {container}/{filename}")
+            if month == primary_month:
+                primary_published = True
+
+        if not primary_published:
+            raise AirflowSkipException(
+                f"[{primary_month}] Primary target not published yet and not already "
+                "in Azure. DAG run skipped — will retry on next scheduled execution."
+            )
 
     # ── Phase 2: Bronze ingestion ─────────────────────────────────────────
 
@@ -89,7 +199,7 @@ def ingest_nyc_taxi_raw() -> None:
         rows_loaded is derived from before/after row counts for this _batch_id,
         which is stable across Snowflake COPY result format variations.
         """
-        month    = logical_date[:7]
+        month    = _target_month(logical_date)
         batch_id = month
         pattern  = rf".*yellow_tripdata_{month}\.parquet"
 
@@ -125,13 +235,17 @@ def ingest_nyc_taxi_raw() -> None:
         for result_row in results:
             status = str(result_row[1]).upper() if len(result_row) > 1 and result_row[1] is not None else ""
             loaded = int(result_row[3] or 0) if len(result_row) > 3 else 0
-            errors = int(result_row[4] or 0) if len(result_row) > 4 else 0
+            errors = int(result_row[5] or 0) if len(result_row) > 5 else 0
 
             copy_reported_rows_loaded += loaded
-            rows_error += errors
 
             if status == "COPY_ALREADY_LOADED":
                 files_already_loaded += 1
+            else:
+                # Only count errors_seen (index 5). Index 4 is error_limit,
+                # which is 1 by default with ON_ERROR='ABORT_STATEMENT' and
+                # must not be mistaken for an actual error count.
+                rows_error += errors
 
         # If this batch already existed and COPY added nothing, treat as idempotent replay.
         if rows_loaded == 0 and before_count > 0:
@@ -209,7 +323,13 @@ def ingest_nyc_taxi_raw() -> None:
 
     summary = copy_into_bronze(logical_date="{{ ds }}")
 
-    create_bronze_table() >> summary >> validate_bronze_load(summary) >> dbt_transform
+    (
+        download_to_azure(logical_date="{{ ds }}")
+        >> create_bronze_table()
+        >> summary
+        >> validate_bronze_load(summary)
+        >> dbt_transform
+    )
 
 
 ingest_nyc_taxi_raw()

@@ -64,6 +64,11 @@ x-airflow-common: &airflow-common
     SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
     SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
 
+    # ── Azure Blob Storage (download_to_azure DAG task) ──────────────────
+    AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT}
+    AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER}
+    AZURE_SAS_TOKEN: ${AZURE_SAS_TOKEN}
+
     # ── Airflow connection — JSON format so SnowflakeHook finds account in extra_dejson ──
     # SnowflakeHook 5.x reads account from extra_dejson, not conn.host.
     # Single-quoted YAML string; docker-compose substitutes ${VAR} before passing to Airflow.

@@ -39,6 +39,7 @@ Before running your models for the first time, load the static lookup data:
 - **dbt "Table not found"**: Ensure you have run `dbt seed` or your Bronze layer ingestion first.
 - **Airflow "DAG Import Error"**: Check `docker-compose logs` for Python syntax errors or missing dbt-cosmos dependencies.
 - **Snowflake "Unauthorized"**: Ensure your `.env` variables match your Snowflake User/Role exactly.
+- **Airflow "IndexError: tuple index out of range" in `copy_into_bronze`**: The Snowflake COPY INTO result tuple shape varies across connector/provider versions. The `copy_into_bronze` task now reconciles loaded rows via before/after `COUNT(*)` on `_batch_id` (deterministic and version-independent) instead of relying on COPY result column positions. If you encounter this error after updating Snowflake drivers, check the DAG logs for the reconciliation summary (`before_count`, `after_count`, `rows_loaded`). The task uses defensive parsing for error/status fields to remain stable across versions.
 
 ## 6. Daily Shutdown
 To save resources and Snowflake credits:

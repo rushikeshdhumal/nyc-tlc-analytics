@@ -100,14 +100,17 @@ def ingest_nyc_taxi_raw() -> None:
         hook.run(f"USE WAREHOUSE {_WAREHOUSE};", autocommit=True)
         results = hook.get_records(sql)
 
-        rows_loaded = sum(int(r[3]) for r in results) if results else 0
-        rows_error  = sum(int(r[4]) for r in results) if results else 0
+        # Snowflake returns NULL for numeric columns when status=COPY_ALREADY_LOADED
+        rows_loaded          = sum(int(r[3] or 0) for r in results) if results else 0
+        rows_error           = sum(int(r[4] or 0) for r in results) if results else 0
+        files_already_loaded = sum(1 for r in results if r[1] == "COPY_ALREADY_LOADED") if results else 0
 
         return {
-            "month":            month,
-            "rows_loaded":      rows_loaded,
-            "rows_error":       rows_error,
-            "files_processed":  len(results),
+            "month":                month,
+            "rows_loaded":          rows_loaded,
+            "rows_error":           rows_error,
+            "files_processed":      len(results),
+            "files_already_loaded": files_already_loaded,
         }
 
     @task()
@@ -115,27 +118,36 @@ def ingest_nyc_taxi_raw() -> None:
         """
         Fail the DAG run if no rows were loaded or if any rows errored.
         Prevents dbt_transform from running against an empty/broken Bronze table.
+        COPY_ALREADY_LOADED is treated as valid — data exists from a prior run.
         """
-        month       = load_summary["month"]
-        rows_loaded = load_summary["rows_loaded"]
-        rows_error  = load_summary["rows_error"]
+        month                = load_summary["month"]
+        rows_loaded          = load_summary["rows_loaded"]
+        rows_error           = load_summary["rows_error"]
+        files_already_loaded = load_summary.get("files_already_loaded", 0)
 
         if rows_error > 0:
             raise ValueError(
                 f"[{month}] COPY INTO reported {rows_error} error rows. "
                 "Inspect COPY_HISTORY in Snowflake before retrying."
             )
-        if rows_loaded == 0:
+        if rows_loaded == 0 and files_already_loaded == 0:
             raise ValueError(
                 f"[{month}] No rows loaded. "
                 "Verify that upload_to_azure.py has run for this month and "
                 "that the stage file matches the expected pattern."
             )
 
-        print(
-            f"[{month}] Bronze load validated: "
-            f"{rows_loaded:,} rows across {load_summary['files_processed']} file(s)."
-        )
+        if files_already_loaded > 0 and rows_loaded == 0:
+            print(
+                f"[{month}] Bronze data already present — "
+                f"{files_already_loaded} file(s) skipped (COPY_ALREADY_LOADED). "
+                "Proceeding to dbt transforms."
+            )
+        else:
+            print(
+                f"[{month}] Bronze load validated: "
+                f"{rows_loaded:,} rows across {load_summary['files_processed']} file(s)."
+            )
 
     # ── Phase 4: dbt Silver + Gold via Cosmos ─────────────────────────────
 

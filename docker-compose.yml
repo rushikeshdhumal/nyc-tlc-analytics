@@ -17,6 +17,11 @@
 #   2. docker-compose up -d
 #   3. docker-compose ps     # verify all services are healthy
 #
+# Service URLs (once healthy)
+# ----------------------------
+#   Airflow UI  → http://localhost:8080  (credentials: AIRFLOW_ADMIN_USERNAME / AIRFLOW_ADMIN_PASSWORD)
+#   Superset UI → http://localhost:8088  (credentials: SUPERSET_ADMIN_USERNAME / SUPERSET_ADMIN_PASSWORD)
+#
 # Volume Mounts (hot-reload during development)
 # -----------------------------------------------
 #   ./orchestration/dags   → /opt/airflow/dags    (DAG changes appear live)
@@ -40,6 +45,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__CORE__TEST_CONNECTION: 'Enabled'
 
     # ── Metadata DB ───────────────────────────────────────────────────────
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
@@ -50,9 +56,6 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
 
-    # ── Snowflake connection (passed to DAGs via Airflow Connection) ───────
-    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: ${AIRFLOW_CONN_SNOWFLAKE_DEFAULT}
-
     # ── Snowflake raw vars (used by dbt-snowflake inside containers) ───────
     SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
     SNOWFLAKE_USER: ${SNOWFLAKE_USER}
@@ -60,6 +63,11 @@ x-airflow-common: &airflow-common
     SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE}
     SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
     SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
+
+    # ── Airflow connection — JSON format so SnowflakeHook finds account in extra_dejson ──
+    # SnowflakeHook 5.x reads account from extra_dejson, not conn.host.
+    # Single-quoted YAML string; docker-compose substitutes ${VAR} before passing to Airflow.
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: '{"conn_type":"snowflake","login":"${SNOWFLAKE_USER}","password":"${SNOWFLAKE_PASSWORD}","extra":{"account":"${SNOWFLAKE_ACCOUNT}","database":"NYC_TLC_DB","warehouse":"COMPUTE_WH","role":"DE_ROLE"}}'
 
   volumes:
     # Hot-reload: local edits appear in the container immediately

@@ -84,7 +84,10 @@ def ingest_nyc_taxi_raw() -> None:
     def copy_into_bronze(logical_date: str) -> dict[str, object]:
         """
         Run COPY INTO for the month represented by logical_date (YYYY-MM-DD).
-        Returns Snowflake's load summary for downstream validation.
+        Returns load summary for downstream validation.
+
+        rows_loaded is derived from before/after row counts for this _batch_id,
+        which is stable across Snowflake COPY result format variations.
         """
         month    = logical_date[:7]
         batch_id = month
@@ -98,16 +101,56 @@ def ingest_nyc_taxi_raw() -> None:
 
         hook = SnowflakeHook(snowflake_conn_id=_SNOWFLAKE_CONN)
         hook.run(f"USE WAREHOUSE {_WAREHOUSE};", autocommit=True)
-        results = hook.get_records(sql)
 
-        # Snowflake returns NULL for numeric columns when status=COPY_ALREADY_LOADED
-        rows_loaded          = sum(int(r[3] or 0) for r in results) if results else 0
-        rows_error           = sum(int(r[4] or 0) for r in results) if results else 0
-        files_already_loaded = sum(1 for r in results if r[1] == "COPY_ALREADY_LOADED") if results else 0
+        count_sql = (
+            "SELECT COUNT(*) "
+            "FROM NYC_TLC_DB.BRONZE.brz_yellow_tripdata "
+            f"WHERE _batch_id = '{batch_id}'"
+        )
+        before_count_row = hook.get_first(count_sql)
+        before_count = int(before_count_row[0] or 0) if before_count_row else 0
+
+        results = hook.get_records(sql) or []
+
+        after_count_row = hook.get_first(count_sql)
+        after_count = int(after_count_row[0] or 0) if after_count_row else 0
+
+        # Snowflake COPY INTO result tuple shapes can vary by connector/provider version.
+        # Parse defensively so this task remains stable across environments.
+        rows_loaded = max(after_count - before_count, 0)
+        copy_reported_rows_loaded = 0
+        rows_error = 0
+        files_already_loaded = 0
+
+        for result_row in results:
+            status = str(result_row[1]).upper() if len(result_row) > 1 and result_row[1] is not None else ""
+            loaded = int(result_row[3] or 0) if len(result_row) > 3 else 0
+            errors = int(result_row[4] or 0) if len(result_row) > 4 else 0
+
+            copy_reported_rows_loaded += loaded
+            rows_error += errors
+
+            if status == "COPY_ALREADY_LOADED":
+                files_already_loaded += 1
+
+        # If this batch already existed and COPY added nothing, treat as idempotent replay.
+        if rows_loaded == 0 and before_count > 0:
+            files_already_loaded = max(files_already_loaded, 1)
+
+        print(
+            f"[{month}] COPY reconciliation: "
+            f"before_count={before_count}, after_count={after_count}, rows_loaded={rows_loaded}"
+        )
+        print(
+            f"[{month}] COPY reported: "
+            f"copy_reported_rows_loaded={copy_reported_rows_loaded}, rows_error={rows_error}, "
+            f"files_processed={len(results)}, files_already_loaded={files_already_loaded}"
+        )
 
         return {
             "month":                month,
             "rows_loaded":          rows_loaded,
+            "copy_reported_rows_loaded": copy_reported_rows_loaded,
             "rows_error":           rows_error,
             "files_processed":      len(results),
             "files_already_loaded": files_already_loaded,

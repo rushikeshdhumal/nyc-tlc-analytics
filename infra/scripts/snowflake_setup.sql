@@ -38,8 +38,8 @@ CREATE ROLE IF NOT EXISTS ANALYST_ROLE
 -- Grant ANALYST_ROLE as a subordinate of DE_ROLE (role hierarchy)
 GRANT ROLE ANALYST_ROLE TO ROLE DE_ROLE;
 
--- Grant DE_ROLE to the pipeline user (replace DE_ADMIN with your actual username)
-GRANT ROLE DE_ROLE TO USER RPDHUMAL;
+-- Grant DE_ROLE to the pipeline user (replace YOUR_SNOWFLAKE_USERNAME with your actual username)
+GRANT ROLE DE_ROLE TO USER YOUR_SNOWFLAKE_USERNAME;
 
 
 -- ===========================================================================

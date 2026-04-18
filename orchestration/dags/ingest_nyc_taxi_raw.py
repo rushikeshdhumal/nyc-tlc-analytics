@@ -1,10 +1,14 @@
 """
 ingest_nyc_taxi_raw — Full monthly pipeline DAG
 
-Runs on the 1st of each month (catchup=True to backfill from Jan 2025).
-TLC publishes data with a ~2 month lag. download_to_azure checks a 6-month
-rolling window so any month missed due to TLC delays is caught automatically
-by the next run (e.g. June 2026 checks Apr, Mar, Feb, Jan, Dec, Nov 2026/25).
+Runs on the 1st of each month (catchup=True).
+start_date=2025-07-01, so the earliest scheduled logical_date is 2025-07-01,
+which targets 2025-05 via the 2-month TLC lag.
+Data for 2025-01 to 2025-04 must be backfilled manually.
+TLC publishes data with a ~2 month lag.
+download_to_azure checks a 6-month rolling window so any month missed due to
+TLC delays is caught automatically by the next run (e.g. June 2026 checks
+Apr, Mar, Feb, Jan, Dec, Nov 2026/25).
 copy_into_bronze targets logical_date minus 2 months.
 
 Task graph:

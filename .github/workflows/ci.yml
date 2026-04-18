@@ -19,7 +19,7 @@ jobs:
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGS_FOLDER: ${{ github.workspace }}/orchestration/dags
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:///${{ github.workspace }}/.airflow/airflow.db
-      AIRFLOW_CONN_SNOWFLAKE_DEFAULT: snowflake://ci:ci@dummy/dummy/dummy?role=DE_ROLE&warehouse=COMPUTE_WH
+      AIRFLOW_CONN_SNOWFLAKE_DEFAULT: '{"conn_type":"snowflake","login":"ci","password":"ci","extra":{"account":"dummy","database":"dummy","warehouse":"COMPUTE_WH","role":"DE_ROLE"}}'
       AZURE_STORAGE_ACCOUNT: ci
       AZURE_STORAGE_CONTAINER: ci
       AZURE_SAS_TOKEN: ci

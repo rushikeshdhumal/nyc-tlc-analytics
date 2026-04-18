@@ -68,9 +68,11 @@ aggregated AS (
             SUM(avg_trip_duration_minutes * trip_count) / NULLIF(SUM(trip_count), 0),
         1)                                                                  AS avg_trip_duration_minutes,
 
-        -- Tips (weighted average — NULL hourly buckets excluded by SUM)
+        -- Tips: weighted by cc trip count (credit_card_trip_pct/100 × trip_count).
+        -- NULL avg_tip_pct buckets (no cc trips) are excluded by NULL propagation.
         ROUND(
-            SUM(avg_tip_pct * trip_count) / NULLIF(SUM(trip_count), 0),
+            SUM(avg_tip_pct * (credit_card_trip_pct / 100.0) * trip_count)
+            / NULLIF(SUM(CASE WHEN avg_tip_pct IS NOT NULL THEN (credit_card_trip_pct / 100.0) * trip_count END), 0),
         1)                                                                  AS avg_tip_pct,
 
         -- Payment mix (weighted average: cc_pct × trips recovers cc trip count)

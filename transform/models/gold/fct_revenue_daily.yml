@@ -103,7 +103,7 @@ models:
 
       # ── Tips ────────────────────────────────────────────────────────────────
       - name: avg_tip_pct
-        description: "Trip-count-weighted average tip % (credit-card trips only). NULL if no credit-card trips on this day/zone."
+        description: "Credit-card-trip-count-weighted average tip %. Weight per hourly bucket = (credit_card_trip_pct / 100) × trip_count. Hourly buckets with no credit-card trips (NULL avg_tip_pct) are excluded. NULL if no credit-card trips on this day/zone."
 
       # ── Payment mix ─────────────────────────────────────────────────────────
       - name: credit_card_trip_pct

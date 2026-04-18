@@ -86,9 +86,17 @@ jobs:
 
       - name: Parse dbt project
         working-directory: transform
-        run: |
-          dbt deps --profiles-dir .
-          dbt parse --target dev --profiles-dir .
+        run: dbt parse --target dev --profiles-dir .
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Airflow image
+        run: docker build -f infra/docker/airflow.Dockerfile -t nyc-tlc-airflow:ci .
 
   dbt-snowflake-integration:
     name: dbt Snowflake Integration

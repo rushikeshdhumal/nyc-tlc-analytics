@@ -2,8 +2,8 @@
 -- NYC TLC BI Pipeline — Snowflake Foundation Setup
 -- =============================================================================
 -- PURPOSE : Creates the full RBAC structure, compute resources, database,
---           Medallion schemas, and the External Stage pointing at the public
---           NYC TLC S3 bucket.
+--           Medallion schemas, and the External Stage pointing at the 
+--           configured Azure Blob Storage source for NYC TLC ingestion.
 --
 -- RUN AS  : SYSADMIN / ACCOUNTADMIN (requires privilege to create roles,
 --           warehouses, and databases).

@@ -111,6 +111,8 @@ filtered AS (
         AND fare_amount > 0
         AND tpep_dropoff_datetime > tpep_pickup_datetime    -- temporal sanity
         AND rate_code_id != 99                              -- exclude unknown rate codes
+        AND YEAR(tpep_pickup_datetime) BETWEEN 2015 AND 2030  -- exclude corrupt epoch timestamps
+        AND TO_CHAR(tpep_pickup_datetime, 'YYYY-MM') = _batch_id  -- exclude bleed-over trips outside their batch month
 
 )
 

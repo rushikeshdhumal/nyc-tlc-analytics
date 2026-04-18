@@ -6,7 +6,7 @@
 
 ## Overview
 
-This dashboard provides a Gold-layer view of NYC TLC taxi activity for operational and executive analysis. It is designed to summarize revenue, demand, zone performance, and payment behavior using the `NYC_TLC_DB.GOLD.fct_revenue_per_zone_hourly` model.
+This dashboard provides a Gold-layer view of NYC TLC taxi activity for operational and executive analysis. It summarizes revenue, demand, zone performance, and payment behavior using both Gold models: `NYC_TLC_DB.GOLD.fct_revenue_daily` (primary source for trend and borough charts) and `NYC_TLC_DB.GOLD.fct_revenue_per_zone_hourly` (vendor, hourly, and heatmap charts).
 
 ## Included Visuals
 
@@ -19,12 +19,12 @@ This dashboard provides a Gold-layer view of NYC TLC taxi activity for operation
 - Revenue Share by Borough
 - Revenue by Vendor
 - Avg Tip % by Borough
-- Revenue by Day of Week
+- Revenue Heatmap (day of week × time of day)
 
 ## Required Data and Configuration
 
 - Superset database connection to Snowflake `NYC_TLC_DB`
-- Dataset sourced from `GOLD.fct_revenue_per_zone_hourly`
+- Datasets sourced from `GOLD.fct_revenue_daily` and `GOLD.fct_revenue_per_zone_hourly`
 - Supporting reference data loaded through `dbt seed`:
   - `silver.taxi_zone_lookup`
 

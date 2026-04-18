@@ -23,7 +23,7 @@
 - **Modular Logic**: Logic goes in the `transform/` folder. Airflow only triggers the execution.
 
 ## 3. Project-Specific Guards
-- **NYC TLC Data**: Use `MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE` for all `COPY INTO` commands.
+- **NYC TLC Data**: Use `MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE` for all `COPY INTO` commands that load directly from a stage file. **Exception**: `copy_into_bronze.sql` uses a `FROM (SELECT ...)` copy transform to inject metadata columns (`_source_file`, `_ingested_at`, `_batch_id`) — Snowflake does not support `MATCH_BY_COLUMN_NAME` with copy transforms, so column mapping is explicit in the SELECT instead.
 - **Medallion Integrity**: Silver models must never reference the External Stage directly; they must pull from Bronze tables.
 - **Naming**: 
   - Bronze tables prefix: `brz_`

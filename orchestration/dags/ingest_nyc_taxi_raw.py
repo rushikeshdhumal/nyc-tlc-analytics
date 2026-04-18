@@ -47,7 +47,6 @@ _TLC_CDN_URL    = (
     "https://d37ci6vzurychx.cloudfront.net/trip-data/"
     "yellow_tripdata_{month}.parquet"
 )
-_CHUNK_SIZE          = 8 * 1024 * 1024  # 8 MB streaming chunks
 _TLC_RELEASE_LAG     = 2               # months TLC takes to publish data
 
 
@@ -164,14 +163,10 @@ def ingest_nyc_taxi_raw() -> None:
                     continue
                 resp.raise_for_status()
 
-                chunks, downloaded = [], 0
-                for chunk in resp.iter_content(chunk_size=_CHUNK_SIZE):
-                    chunks.append(chunk)
-                    downloaded += len(chunk)
-                data = b"".join(chunks)
-
-            print(f"[{month}] Downloaded {downloaded / 1_048_576:.1f} MB — uploading.")
-            blob.upload_blob(data, overwrite=False)
+                size_mb = int(resp.headers.get("content-length", 0)) / 1_048_576
+                print(f"[{month}] Streaming {size_mb:.1f} MB → {container}/{filename}")
+                resp.raw.decode_content = True  # handle transparent content-encoding
+                blob.upload_blob(resp.raw, overwrite=False)
             print(f"[{month}] Uploaded → {container}/{filename}")
             if month == primary_month:
                 primary_published = True

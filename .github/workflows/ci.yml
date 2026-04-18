@@ -104,7 +104,7 @@ jobs:
     #   SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD,
     #   SNOWFLAKE_ROLE, SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && secrets.SNOWFLAKE_ACCOUNT != '' && secrets.SNOWFLAKE_USER != '' && secrets.SNOWFLAKE_PASSWORD != '' && secrets.SNOWFLAKE_ROLE != '' && secrets.SNOWFLAKE_WAREHOUSE != '' && secrets.SNOWFLAKE_DATABASE != '' }}
+    if: ${{ github.event_name == 'push' && vars.SNOWFLAKE_INTEGRATION_ENABLED == 'true' }}
     env:
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}

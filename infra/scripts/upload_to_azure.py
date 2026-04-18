@@ -92,7 +92,7 @@ def download_parquet(month: str) -> bytes | None:
     print(f"  → downloading {url}")
     with requests.get(url, stream=True, timeout=120) as resp:
         if resp.status_code == 404:
-            print(f"     not published yet — skipping")
+            print("     not published yet — skipping")
             return None
         resp.raise_for_status()
         chunks = []
@@ -166,7 +166,7 @@ def run(dry_run: bool, single_month: str | None) -> None:
         print(f"\n[{month}] {blob_name}")
 
         if blob_exists(az_client, container, blob_name):
-            print(f"  already in Azure — skipping")
+            print("  already in Azure — skipping")
             skipped += 1
             continue
 

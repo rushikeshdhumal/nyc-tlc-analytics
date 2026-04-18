@@ -18,21 +18,31 @@ The full sequence is: connect → load reference data → build models → valid
 
 ## dbt-fusion vs dbt-core syntax divergence
 
-This project uses two different dbt runtimes:
+**Expected local runtime: dbt-core 1.8.7** (installed via `requirements.txt`).
+dbt-fusion is not a manual install — it is bundled inside the dbt Power User VS Code
+extension and runs automatically in the IDE background. Developers who do not use
+that extension will never encounter it.
+
+During development, dbt-fusion 2.0.x (via the VS Code extension) ran alongside
+dbt-core 1.8.7 and exposed a hard incompatibility on the `relationships` generic
+test syntax:
 
 | Context | Runtime | Version |
 |---|---|---|
-| Local (`dbt debug`, `dbt run`, `dbt test`) | dbt-fusion | 2.0.x |
+| VS Code dbt Power User extension | dbt-fusion | 2.0.x (auto, IDE only) |
+| Local CLI (`dbt debug`, `dbt run`, `dbt test`) | dbt-core | 1.8.7 |
 | Airflow / Cosmos (inside Docker) | dbt-core | 1.8.7 |
 
-They have a hard incompatibility on the `relationships` generic test syntax:
-
 - dbt-fusion 2.0 requires `arguments:` wrapper (hard error `dbt0102` without it)
-- dbt-core 1.8.7 (Cosmos) breaks when `arguments:` is present
+- dbt-core 1.8.7 breaks when `arguments:` is present
 
-There is no format that satisfies both runtimes simultaneously. The `relationships` test on `pu_location_id` has been removed from `stg_yellow_tripdata.yml` to unblock local runs. The referential integrity it checked is enforced structurally in the Gold model via `LEFT JOIN` + `COALESCE(..., 'Unknown')` on unmatched zone IDs.
+There is no format that satisfies both runtimes simultaneously. The `relationships`
+test on `pu_location_id` has been removed from `stg_yellow_tripdata.yml` to unblock
+IDE runs. The referential integrity it checked is enforced structurally in the Gold
+model via `LEFT JOIN` + `COALESCE(..., 'Unknown')` on unmatched zone IDs.
 
-To restore the test properly, upgrade the Airflow Dockerfile to dbt-core 1.9.x (which supports `arguments:`) and add back the test using the new format.
+To restore the test properly, upgrade the Airflow Dockerfile to dbt-core 1.9.x
+(which supports `arguments:`) and add back the test using the new format.
 
 ---
 

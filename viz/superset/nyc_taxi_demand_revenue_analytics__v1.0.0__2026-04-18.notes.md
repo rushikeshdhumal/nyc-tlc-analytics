@@ -13,12 +13,13 @@ This dashboard provides a Gold-layer view of NYC TLC taxi activity for operation
 - Total Revenue KPI
 - Trip Count KPI
 - Avg Revenue per Trip KPI
-- Credit Card Trip % KPI
-- Hourly Revenue Trend
-- Hourly Trip Demand Trend
-- Top Pickup Zones by Revenue
-- Revenue Efficiency by Vendor
-- Zone Performance Detail table
+- Average Tip % KPI
+- Monthly Revenue Trend
+- Monthly Trip Volume
+- Revenue Share by Borough
+- Revenue by Vendor
+- Avg Tip % by Borough
+- Revenue by Day of Week
 
 ## Required Data and Configuration
 

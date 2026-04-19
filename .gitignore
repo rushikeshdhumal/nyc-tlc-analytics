@@ -150,3 +150,5 @@ Desktop.ini
 
 # Node (if any front-end tooling is added later)
 node_modules/
+
+.claude/SYSTEM_SPECS.md

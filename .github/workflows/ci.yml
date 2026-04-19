@@ -23,6 +23,7 @@ jobs:
       AZURE_STORAGE_ACCOUNT: ci
       AZURE_STORAGE_CONTAINER: ci
       AZURE_SAS_TOKEN: ci
+      DBT_PROJECT_DIR: ${{ github.workspace }}/transform
     steps:
       - name: Checkout
         uses: actions/checkout@v5

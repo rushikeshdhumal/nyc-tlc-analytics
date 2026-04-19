@@ -44,7 +44,7 @@ from cosmos.profiles import SnowflakeUserPasswordProfileMapping
 # Constants
 # ---------------------------------------------------------------------------
 _SQL_DIR        = Path(__file__).parent.parent / "include" / "sql"
-_DBT_PROJECT    = Path("/opt/airflow/transform")
+_DBT_PROJECT    = Path(os.getenv("DBT_PROJECT_DIR", "/opt/airflow/transform"))
 _SNOWFLAKE_CONN = "snowflake_default"
 _WAREHOUSE      = "COMPUTE_WH"
 _TLC_CDN_URL    = (

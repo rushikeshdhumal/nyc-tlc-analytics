@@ -34,14 +34,14 @@
 
 ---
 
-## Phase 6 (ML): MLOps Infrastructure
-- [ ] Scaffold `ml/` folder structure and add to `MODULAR_MONOLITH_STRUCTURE.md`.
-- [ ] Add MLflow tracking server to Docker Compose (with persistent artifact store volume).
-- [ ] Add `MLFLOW_TRACKING_URI` to `.env.example`.
-- [ ] Define MLflow experiment naming convention and required logged params/metrics (see `ML_EXPERIMENT_STANDARDS.md`).
-- [ ] **Airflow DAG `mlflow_cleanup`**: monthly job to archive stale MLflow runs older than 90 days, keeping Model Registry clean.
-- [ ] Add MLflow service to CI smoke test.
-- [ ] Write ADR-006: MLflow as experiment tracker and model registry.
+## Phase 6 (ML): MLOps Infrastructure ✅
+- [x] Scaffold `ml/` folder structure and add to `MODULAR_MONOLITH_STRUCTURE.md`.
+- [x] Add MLflow tracking server to Docker Compose (with persistent artifact store volume).
+- [x] Add `MLFLOW_TRACKING_URI` to `.env.example`.
+- [x] Define MLflow experiment naming convention and required logged params/metrics (see `ML_EXPERIMENT_STANDARDS.md`).
+- [x] **Airflow DAG `mlflow_cleanup`**: monthly job to archive stale MLflow runs older than 90 days, keeping Model Registry clean.
+- [x] Add MLflow service to CI smoke test.
+- [x] Write ADR-006: MLflow as experiment tracker and model registry.
 
 ## Phase 7 (ML): Demand Forecasting
 - [x] Load 2024 historical data (Jan–Dec 2024) into Bronze and run `dbt build --full-refresh`. Bronze now has ~94M rows covering Jan 2024 – present.

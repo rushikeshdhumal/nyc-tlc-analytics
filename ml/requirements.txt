@@ -1,0 +1,24 @@
+# =============================================================================
+# ML module dependencies — installed in the ml/ execution environment.
+# These are NOT installed in the Airflow container; ML scripts run directly
+# on the host or in a dedicated ML container (future Phase).
+# =============================================================================
+
+# --- Feature engineering & model training ---
+lightgbm==4.5.0
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.5.2
+
+# --- Experiment tracking & model registry ---
+mlflow==2.16.0
+
+# --- Snowflake I/O (with pandas integration) ---
+snowflake-connector-python[pandas]==3.12.2
+pyarrow==17.0.0
+
+# --- Causal inference (DiD regression) ---
+statsmodels==0.14.4
+
+# --- Visualisation (artifact plots) ---
+matplotlib==3.9.2

@@ -67,7 +67,7 @@ flowchart LR
 
 ## Data Coverage
 
-NYC Yellow Taxi trips · January 2025 – present · Source: [NYC TLC Open Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
+NYC Yellow Taxi trips · January 2024 – present · Source: [NYC TLC Open Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
 
 ## Key Design Decisions
 

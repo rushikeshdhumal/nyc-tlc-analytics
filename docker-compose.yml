@@ -1,0 +1,229 @@
+# =============================================================================
+# NYC TLC BI Pipeline — Local Development Stack
+# =============================================================================
+#
+# Services
+# --------
+#   postgres          → Airflow metadata DB (postgres:15-alpine)
+#   airflow-init      → One-shot: DB migrate + admin user creation
+#   airflow-webserver → Airflow UI          http://localhost:8080
+#   airflow-scheduler → DAG parsing & task scheduling
+#   superset-init     → One-shot: Superset DB migrate + admin creation
+#   superset          → Superset UI         http://localhost:8088
+#
+# Usage
+# -----
+#   1. cp .env.example .env  # then fill in Snowflake credentials
+#   2. docker-compose up -d
+#   3. docker-compose ps     # verify all services are healthy
+#
+# Service URLs (once healthy)
+# ----------------------------
+#   Airflow UI  → http://localhost:8080  (credentials: AIRFLOW_ADMIN_USERNAME / AIRFLOW_ADMIN_PASSWORD)
+#   Superset UI → http://localhost:8088  (credentials: SUPERSET_ADMIN_USERNAME / SUPERSET_ADMIN_PASSWORD)
+#
+# Volume Mounts (hot-reload during development)
+# -----------------------------------------------
+#   ./orchestration/dags   → /opt/airflow/dags    (DAG changes appear live)
+#   ./orchestration/plugins→ /opt/airflow/plugins
+#   ./orchestration/include→ /opt/airflow/include
+#   ./transform            → /opt/airflow/transform (dbt project, read by Cosmos)
+#   ./viz/superset         → /app/superset_exports  (dashboard JSON exports)
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# YAML ANCHOR — shared Airflow config to avoid repeating env + volumes
+# ---------------------------------------------------------------------------
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: infra/docker/airflow.Dockerfile
+  env_file: .env
+  environment:
+    # ── Executor ──────────────────────────────────────────────────────────
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__CORE__TEST_CONNECTION: 'Enabled'
+
+    # ── Metadata DB ───────────────────────────────────────────────────────
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+      postgresql+psycopg2://airflow:${POSTGRES_AIRFLOW_PASSWORD:-airflow}@postgres:5432/airflow
+
+    # ── Security ──────────────────────────────────────────────────────────
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+
+    # ── Snowflake raw vars (used by dbt-snowflake inside containers) ───────
+    SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
+    SNOWFLAKE_USER: ${SNOWFLAKE_USER}
+    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
+    SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE}
+    SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
+    SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
+
+    # ── Azure Blob Storage (download_to_azure DAG task) ──────────────────
+    AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT}
+    AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER}
+    AZURE_SAS_TOKEN: ${AZURE_SAS_TOKEN}
+
+    # ── Airflow connection — JSON format so SnowflakeHook finds account in extra_dejson ──
+    # SnowflakeHook 5.x reads account from extra_dejson, not conn.host.
+    # Single-quoted YAML string; docker-compose substitutes ${VAR} before passing to Airflow.
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: '{"conn_type":"snowflake","login":"${SNOWFLAKE_USER}","password":"${SNOWFLAKE_PASSWORD}","extra":{"account":"${SNOWFLAKE_ACCOUNT}","database":"NYC_TLC_DB","warehouse":"COMPUTE_WH","role":"DE_ROLE"}}'
+
+  volumes:
+    # Hot-reload: local edits appear in the container immediately
+    - ./orchestration/dags:/opt/airflow/dags
+    - ./orchestration/plugins:/opt/airflow/plugins
+    - ./orchestration/include:/opt/airflow/include
+    # dbt project mounted so Astronomer Cosmos can parse it at runtime
+    - ./transform:/opt/airflow/transform
+    # Named volume for Airflow task logs (survives container restarts)
+    - airflow-logs:/opt/airflow/logs
+
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+  networks:
+    - backend
+
+# ===========================================================================
+# SERVICES
+# ===========================================================================
+services:
+
+  # ── Shared Metadata Database ─────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ── Airflow Initialization (one-shot) ────────────────────────────────────
+  # Runs DB migrations and creates the admin user, then exits (code 0).
+  # Re-running `docker-compose up` is safe — `create-admin` is idempotent
+  # because we use `|| true` to ignore "user already exists" errors.
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c 'airflow db migrate && airflow users create
+      --username ${AIRFLOW_ADMIN_USERNAME:-admin}
+      --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      --firstname Admin
+      --lastname User
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL:-admin@localhost} || true'
+    restart: on-failure
+
+  # ── Airflow Webserver  →  http://localhost:8080 ──────────────────────────
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ── Airflow Scheduler ────────────────────────────────────────────────────
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: >
+        ["CMD-SHELL",
+         "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── Superset Initialization (one-shot) ───────────────────────────────────
+  # Runs DB upgrade, creates the admin, and calls superset init (role seeding).
+  superset-init:
+    build:
+      context: .
+      dockerfile: infra/docker/superset.Dockerfile
+    env_file: .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    command: bash -c "superset db upgrade && superset fab create-admin --username $${SUPERSET_ADMIN_USERNAME:-admin} --firstname Admin --lastname User --email $${SUPERSET_ADMIN_EMAIL:-admin@localhost} --password $${SUPERSET_ADMIN_PASSWORD:-admin} || true && superset init"
+    volumes:
+      - superset-home:/app/superset_home
+      - ./viz/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    networks:
+      - backend
+    restart: on-failure
+
+  # ── Apache Superset  →  http://localhost:8088 ────────────────────────────
+  # Connect to Snowflake Gold tables via the UI:
+  #   Data > Databases > + Database > Snowflake
+  superset:
+    build:
+      context: .
+      dockerfile: infra/docker/superset.Dockerfile
+    env_file: .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    command: superset run -p 8088 --host=0.0.0.0 --with-threads
+    volumes:
+      - superset-home:/app/superset_home
+      # Dashboard JSON exports/imports live here
+      - ./viz/superset:/app/superset_exports
+      - ./viz/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: unless-stopped
+
+# ===========================================================================
+# NAMED VOLUMES
+# ===========================================================================
+volumes:
+  postgres-db:
+    driver: local
+  airflow-logs:
+    driver: local
+  superset-home:
+    driver: local
+
+# ===========================================================================
+# NETWORKS
+# A single bridge network so Airflow and Superset can resolve each other
+# by service name if needed (e.g., Airflow triggering Superset cache refresh).
+# ===========================================================================
+networks:
+  backend:
+    driver: bridge
+    name: nyc_tlc_backend

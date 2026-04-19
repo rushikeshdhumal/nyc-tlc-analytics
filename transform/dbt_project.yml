@@ -1,0 +1,74 @@
+# =============================================================================
+# dbt Project Configuration — NYC TLC BI Pipeline
+# Ref: .claude/MODULAR_MONOLITH_STRUCTURE.md
+#      .claude/CLAUDE.md §2 (dbt standards)
+#      .claude/DATA_LINEAGE_CONTRACTS.md §1 (Medallion layer rules)
+# =============================================================================
+
+name: 'nyc_tlc_project'
+version: '1.0.0'
+config-version: 2
+
+profile: 'nyc_tlc_project'   # matches transform/profiles.yml
+
+# ---------------------------------------------------------------------------
+# Model paths
+# ---------------------------------------------------------------------------
+model-paths:  ["models"]
+seed-paths:   ["seeds"]
+test-paths:   ["tests"]
+macro-paths:  ["macros"]
+analysis-paths: ["analyses"]
+snapshot-paths: ["snapshots"]
+
+# ---------------------------------------------------------------------------
+# Target output directory (git-ignored)
+# ---------------------------------------------------------------------------
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# ---------------------------------------------------------------------------
+# Model configurations per Medallion layer
+# Each layer maps to its corresponding Snowflake schema.
+# ---------------------------------------------------------------------------
+models:
+  nyc_tlc_project:
+
+    # ── Bronze (brz_) ────────────────────────────────────────────────────
+    # Schema-on-read: VARIANT columns, no transformations.
+    # Naming rule: brz_ prefix  (ref: CLAUDE.md §3)
+    bronze:
+      +schema:       bronze
+      +materialized: table
+      +tags:         ['bronze', 'raw']
+
+    # ── Silver (stg_) ────────────────────────────────────────────────────
+    # Type-cast, deduplicated, filtered.
+    # Must NEVER reference the External Stage directly (CLAUDE.md §3).
+    silver:
+      +schema:       silver
+      +materialized: table
+      +tags:         ['silver', 'trusted']
+
+    # ── Gold (fct_ / dim_) ───────────────────────────────────────────────
+    # Aggregated marts for Superset. Grain: hour × pickup_zone × vendor.
+    gold:
+      +schema:       gold
+      +materialized: table
+      +tags:         ['gold', 'analytics']
+
+# ---------------------------------------------------------------------------
+# Seed configuration
+# taxi_zone_lookup.csv is the static reference table loaded via `dbt seed`
+# ---------------------------------------------------------------------------
+seeds:
+  nyc_tlc_project:
+    taxi_zone_lookup:
+      +schema:      silver          # loaded into the Silver schema
+      +column_types:
+        LocationID:    integer
+        Borough:       varchar(50)
+        Zone:          varchar(100)
+        service_zone:  varchar(50)

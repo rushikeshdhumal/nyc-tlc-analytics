@@ -1,0 +1,123 @@
+version: 2
+
+models:
+  - name: fct_revenue_daily
+    description: >
+      Gold fact table. Revenue, demand, and efficiency metrics aggregated to
+      daily + pickup zone grain. Built on top of fct_revenue_per_zone_hourly
+      by summing across all hours and vendors. ~24x fewer rows than the hourly
+      table — use this as the primary Superset data source for time-series and
+      bar charts to minimise Snowflake compute.
+      Grain: one row per (pickup_date, pu_location_id).
+
+    columns:
+      - name: fct_id
+        description: "MD5 surrogate PK on (pickup_date, pu_location_id)."
+        tests:
+          - unique
+          - not_null
+
+      - name: pickup_date
+        description: "Calendar date of the trips. Primary time axis for trend charts."
+        tests:
+          - not_null
+
+      - name: day_of_week
+        description: "Day name (Mon, Tue, …, Sun). Used for weekly demand patterns."
+        tests:
+          - not_null
+
+      - name: pu_location_id
+        description: "TLC pickup zone ID."
+        tests:
+          - not_null
+
+      - name: pickup_borough
+        description: "NYC Borough name (e.g. Manhattan). 'Unknown' if zone has no lookup match."
+        tests:
+          - not_null
+
+      - name: pickup_zone
+        description: "Neighborhood name (e.g. JFK Airport). 'Unknown' if zone has no lookup match."
+        tests:
+          - not_null
+
+      - name: service_zone
+        description: "TLC service zone category (e.g. Yellow Zone, Boro Zone). 'Unknown' if zone has no lookup match."
+        tests:
+          - not_null
+
+      # ── Volume ──────────────────────────────────────────────────────────────
+      - name: trip_count
+        description: "Total trips on this day in this zone (across all hours and vendors)."
+        tests:
+          - not_null
+
+      - name: total_passengers
+        description: "SUM(passenger_count) for this day and zone."
+        tests:
+          - not_null
+
+      - name: avg_passengers_per_trip
+        description: "Daily average passenger count per trip."
+        tests:
+          - not_null
+
+      # ── Revenue ─────────────────────────────────────────────────────────────
+      - name: total_revenue
+        description: "SUM(total_amount) for this day and zone."
+        tests:
+          - not_null
+
+      - name: total_fare
+        description: "SUM(fare_amount) — base fares only, excluding surcharges."
+        tests:
+          - not_null
+
+      - name: revenue_per_trip
+        description: "total_revenue / trip_count — average ticket size for the day."
+        tests:
+          - not_null
+
+      # ── Distance & efficiency ────────────────────────────────────────────────
+      - name: total_distance_miles
+        description: "SUM(trip_distance) for this day and zone."
+        tests:
+          - not_null
+
+      - name: avg_distance_miles
+        description: "Average trip distance in miles for this day and zone."
+        tests:
+          - not_null
+
+      - name: revenue_per_mile
+        description: "total_revenue / total_distance_miles — zone revenue efficiency."
+        tests:
+          - not_null
+
+      # ── Duration ────────────────────────────────────────────────────────────
+      - name: avg_trip_duration_minutes
+        description: "Trip-count-weighted average duration in minutes across hourly buckets."
+        tests:
+          - not_null
+
+      # ── Tips ────────────────────────────────────────────────────────────────
+      - name: avg_tip_pct
+        description: "Credit-card-trip-count-weighted average tip %. Weight per hourly bucket = (credit_card_trip_pct / 100) × trip_count. Hourly buckets with no credit-card trips (NULL avg_tip_pct) are excluded. NULL if no credit-card trips on this day/zone."
+
+      # ── Payment mix ─────────────────────────────────────────────────────────
+      - name: credit_card_trip_pct
+        description: "Percentage of trips paid by credit card for this day and zone."
+        tests:
+          - not_null
+
+      # ── 2025 surcharges ──────────────────────────────────────────────────────
+      - name: total_congestion_fees
+        description: "SUM(cbd_congestion_fee) for this day and zone."
+        tests:
+          - not_null
+
+      - name: total_airport_fees
+        description: "SUM(airport_fee) for this day and zone."
+        tests:
+          - not_null

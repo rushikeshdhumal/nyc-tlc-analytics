@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-and-dag-checks:
+    name: Python Lint + DAG Parse
+    runs-on: ubuntu-latest
+    env:
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_FOLDER: ${{ github.workspace }}/orchestration/dags
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:///${{ github.workspace }}/.airflow/airflow.db
+      AIRFLOW_CONN_SNOWFLAKE_DEFAULT: '{"conn_type":"snowflake","login":"ci","password":"ci","extra":{"account":"dummy","database":"dummy","warehouse":"COMPUTE_WH","role":"DE_ROLE"}}'
+      AZURE_STORAGE_ACCOUNT: ci
+      AZURE_STORAGE_CONTAINER: ci
+      AZURE_SAS_TOKEN: ci
+      DBT_PROJECT_DIR: ${{ github.workspace }}/transform
+      SNOWFLAKE_ACCOUNT: dummy
+      SNOWFLAKE_USER: dummy
+      SNOWFLAKE_PASSWORD: dummy
+      SNOWFLAKE_ROLE: DE_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: NYC_TLC_DB
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          pip install "apache-airflow==2.9.3" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.3/constraints-3.12.txt"
+          pip install -r orchestration/requirements.txt
+
+      - name: Lint Python
+        run: |
+          ruff check orchestration infra
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall orchestration infra
+
+      - name: Initialise Airflow metadata DB
+        run: airflow db init
+
+      - name: Parse Airflow DAGs
+        run: |
+          python - <<'PY'
+          from airflow.models import DagBag
+
+          dag_bag = DagBag(dag_folder="orchestration/dags", include_examples=False)
+          if dag_bag.import_errors:
+              for filepath, error in dag_bag.import_errors.items():
+                  print(f"IMPORT ERROR in {filepath}:\n{error}\n")
+              raise SystemExit(1)
+
+          print(f"Parsed {len(dag_bag.dags)} DAG(s) with zero import errors.")
+          PY
+
+  dbt-static-checks:
+    name: dbt Parse
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: dummy
+      SNOWFLAKE_USER: dummy
+      SNOWFLAKE_PASSWORD: dummy
+      SNOWFLAKE_ROLE: DE_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: NYC_TLC_DB
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.8.7 dbt-snowflake==1.8.4
+
+      - name: Parse dbt project
+        working-directory: transform
+        run: dbt parse --target dev --profiles-dir .
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build Airflow image
+        run: docker build -f infra/docker/airflow.Dockerfile -t nyc-tlc-airflow:ci .
+
+  dbt-snowflake-integration:
+    name: dbt Snowflake Integration
+    # TODO: Configure these repository secrets to enable this job:
+    #   SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD,
+    #   SNOWFLAKE_ROLE, SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && vars.SNOWFLAKE_INTEGRATION_ENABLED == 'true' }}
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.8.7 dbt-snowflake==1.8.4
+
+      - name: Validate Snowflake connectivity
+        working-directory: transform
+        run: dbt debug --target prod --profiles-dir .
+
+      - name: Run dbt seed and targeted build
+        working-directory: transform
+        run: |
+          dbt seed --target prod --profiles-dir .
+          dbt build --target prod --profiles-dir . --select stg_yellow_tripdata fct_revenue_per_zone_hourly fct_revenue_daily

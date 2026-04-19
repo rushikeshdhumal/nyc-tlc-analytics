@@ -129,10 +129,16 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
     command: >
-      sh -c "psql -h postgres -U airflow -d airflow
-      -c 'CREATE DATABASE mlflow' 2>/dev/null
-      && echo 'Created mlflow database.'
-      || echo 'mlflow database already exists, skipping.'"
+      sh -c "set -e;
+      if psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow
+        -tAc \"SELECT 1 FROM pg_database WHERE datname='mlflow'\"
+        | grep -q 1; then
+        echo 'mlflow database already exists, skipping.';
+      else
+        psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow
+        -c 'CREATE DATABASE mlflow';
+        echo 'Created mlflow database.';
+      fi"
     depends_on:
       postgres:
         condition: service_healthy

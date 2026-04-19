@@ -23,6 +23,11 @@
 --   4. Trigger ingest_nyc_taxi_raw DAG  →  populates Bronze
 --   5. Then dbt build --full-refresh    →  rebuilds Silver and Gold from Bronze
 --      (step 5 is optional if the DAG's dbt task group completes successfully)
+--   6. Re-run predict.py for each historical month to repopulate ML.fct_demand_forecast:
+--        python ml/models/demand_forecast/predict.py --run-date YYYY-MM-DD
+--      The Production model survives in the MLflow Docker volume — no retraining needed.
+--      run-date = first day of the month AFTER the target month
+--      (e.g. --run-date 2026-02-01 generates predictions for 2026-01).
 --   No data export from the old account is needed. MLflow stays local to Docker.
 -- =============================================================================
 

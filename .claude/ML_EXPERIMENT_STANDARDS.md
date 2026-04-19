@@ -29,12 +29,12 @@ Every training run must log all of the following before the run is considered co
 |---|---|---|
 | `model_type` | Algorithm name | `lightgbm` |
 | `run_date` | Date the training script was executed | `2026-04-18` |
-| `train_start` | Start date of training data | `2024-01-01` |
-| `train_end` | End date of training data | `2025-10-31` |
-| `val_start` | Start date of validation window | `2025-11-01` |
-| `val_end` | End date of validation window | `2025-12-31` |
-| `test_start` | Start date of holdout window | `2026-01-01` |
-| `test_end` | End date of holdout window | `2026-01-31` |
+| `train_start` | Start date of training data (always `2024-01-01`) | `2024-01-01` |
+| `train_end` | End date of training data (rolls forward each month) | `2025-12-31` |
+| `val_start` | Start of validation window (month before test) | `2026-01-01` |
+| `val_end` | End of validation window | `2026-01-31` |
+| `test_start` | Start of holdout window (last complete Gold month) | `2026-02-01` |
+| `test_end` | End of holdout window | `2026-02-28` |
 | `features` | Comma-separated list of feature names | `hour_of_day,lag_168h_trip_count,...` |
 | `n_features` | Total number of features | `12` |
 | `hyperparams` | JSON string of model hyperparameters | `{"n_estimators": 500, "lr": 0.05}` |
@@ -79,9 +79,9 @@ Set `mlflow.set_tag("mlflow.runName", ...)` using this format:
 {model_type}__{train_end}__{val_mape:.1f}pct
 ```
 
-Examples:
-- `lightgbm__2025-10-31__8.3pct`
-- `lightgbm__2025-10-31__12.1pct`
+Examples (train_end rolls forward with each monthly retrain):
+- `lightgbm__2025-12-31__8.3pct`
+- `lightgbm__2026-01-31__7.9pct`
 
 This makes runs scannable in the MLflow UI without opening each one.
 
@@ -125,7 +125,39 @@ Document `did_estimate` and `p_value` in the ADR.
 
 ---
 
-## 6. MLflow Tracking Server
+## 6. Local Development — Feature Cache
+
+`train.py` supports a `--features-cache PATH` flag to avoid re-querying Snowflake
+on every local training run. The feature matrix (~25 months of Gold data, ~4.7M rows)
+takes ~30s to pull; the cache eliminates this for all subsequent runs.
+
+```bash
+# First run: queries Snowflake, saves Parquet to disk
+# Prints: "Features cached to: data/features_2026-04.parquet"
+python ml/models/demand_forecast/train.py \
+  --run-date 2026-04-19 \
+  --features-cache data/features_2026-04.parquet
+
+# Subsequent runs: loads from disk, zero Snowflake credits
+# Prints: "Loading features from cache: data/features_2026-04.parquet"
+python ml/models/demand_forecast/train.py \
+  --run-date 2026-04-19 \
+  --features-cache data/features_2026-04.parquet
+```
+
+**The cache is never generated automatically.** You must pass `--features-cache PATH`
+explicitly. Without the flag, every run queries Snowflake fresh with no caching.
+
+**Cache invalidation**: delete the file when new monthly Gold data lands (i.e. when
+`run_date` month changes). Name the cache file with the month so it's obvious when
+it's stale: `data/features_YYYY-MM.parquet`.
+
+**Airflow DAG**: the `retrain_demand_forecast` DAG calls `run_training()` with no
+`cache_path` — it always queries Snowflake fresh. Cache is a local dev tool only.
+
+---
+
+## 7. MLflow Tracking Server
 
 | Setting | Value |
 |---|---|

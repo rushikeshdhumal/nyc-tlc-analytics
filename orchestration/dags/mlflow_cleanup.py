@@ -58,15 +58,22 @@ def mlflow_cleanup_dag() -> None:
             experiment = client.get_experiment_by_name(exp_name)
             if experiment is None:
                 continue
-            runs = client.search_runs(
-                experiment_ids=[experiment.experiment_id],
-                filter_string=f"attributes.start_time < {cutoff_ms}",
-                run_view_type=mlflow.entities.ViewType.ACTIVE_ONLY,
-            )
-            for run in runs:
-                if run.info.run_id not in protected_run_ids:
-                    client.delete_run(run.info.run_id)
-                    deleted += 1
+            page_token = None
+            while True:
+                page = client.search_runs(
+                    experiment_ids=[experiment.experiment_id],
+                    filter_string=f"attributes.start_time < {cutoff_ms}",
+                    run_view_type=mlflow.entities.ViewType.ACTIVE_ONLY,
+                    max_results=1000,
+                    page_token=page_token,
+                )
+                for run in page:
+                    if run.info.run_id not in protected_run_ids:
+                        client.delete_run(run.info.run_id)
+                        deleted += 1
+                page_token = page.token
+                if not page_token:
+                    break
 
         print(
             f"Archived {deleted} MLflow run(s) older than {_RETENTION_DAYS} days. "

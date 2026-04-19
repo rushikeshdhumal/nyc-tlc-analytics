@@ -54,8 +54,9 @@ flowchart LR
     A[download_to_azure] --> B[create_bronze_table]
     B --> C[copy_into_bronze]
     C --> D[validate_bronze_load]
-    D --> E[dbt_transform]
-    subgraph E[dbt_transform]
+    D --> dbt
+
+    subgraph dbt[dbt_transform]
         F[stg_yellow_tripdata.run] --> F2[stg_yellow_tripdata.test]
         F2 --> G[fct_revenue_per_zone_hourly.run]
         G --> G2[fct_revenue_per_zone_hourly.test]

@@ -42,12 +42,16 @@ MLflow runs as a dedicated Docker service (`mlflow`) on the `nyc_tlc_backend`
 network. Airflow containers reach it at `http://mlflow:5000`; the host
 terminal reaches it at `http://localhost:5000`.
 
-- **Backend store**: SQLite at `./mlflow/mlflow.db` (bind-mounted volume).
-  Adequate for single-user development; migrate to PostgreSQL for multi-user
-  production.
+- **Backend store**: PostgreSQL — a `mlflow` database inside the existing
+  `postgres` container (shared with Airflow metadata). Reuses the `airflow`
+  user. A `postgres-init` one-shot service creates the database idempotently
+  on every `docker compose up` (check-before-create, safe to re-run). The
+  `mlflow` service depends on `postgres-init` completing successfully. The
+  connection URI is passed via `MLFLOW_BACKEND_STORE_URI` at runtime, keeping
+  credentials out of the image.
 - **Artifact store**: local filesystem at `./mlflow/artifacts`
-  (bind-mounted). Artifacts are stored alongside the database in the working
-  directory.
+  (bind-mounted). Artifacts are stored in the working directory alongside the
+  rest of the project data.
 
 ### Tracking setup in all training scripts
 
@@ -99,8 +103,8 @@ MLOps governance rules in `ML_EXPERIMENT_STANDARDS.md`.
   without any extra tooling.
 
 **Trade-offs**
-- SQLite serialises writes — not suitable for parallel training jobs.
-  Acceptable for this single-user project.
+- Sharing the Postgres container couples MLflow's availability to Airflow's
+  metadata DB. Acceptable here; in production these would be separate instances.
 - Artifact store is local disk — not replicated. Acceptable for development;
   a cloud artifact store (Azure Blob, S3) would be the production upgrade path.
 

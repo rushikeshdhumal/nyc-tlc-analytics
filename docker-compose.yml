@@ -120,6 +120,26 @@ services:
       - backend
     restart: unless-stopped
 
+  # ── Postgres Database Bootstrap (one-shot) ──────────────────────────────
+  # Idempotent: creates the mlflow database if it does not already exist.
+  # Runs on every `docker compose up` — safe to re-run, nothing happens if
+  # the database is already there. The mlflow service depends on this completing.
+  postgres-init:
+    image: postgres:15-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
+    command: >
+      sh -c "psql -h postgres -U airflow -d airflow
+      -c 'CREATE DATABASE mlflow' 2>/dev/null
+      && echo 'Created mlflow database.'
+      || echo 'mlflow database already exists, skipping.'"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: on-failure
+
   # ── Airflow Initialization (one-shot) ────────────────────────────────────
   # Runs DB migrations and creates the admin user, then exits (code 0).
   # Re-running `docker-compose up` is safe — `create-admin` is idempotent
@@ -186,11 +206,16 @@ services:
     build:
       context: .
       dockerfile: infra/docker/mlflow.Dockerfile
+    environment:
+      MLFLOW_BACKEND_STORE_URI: >-
+        postgresql+psycopg2://airflow:${POSTGRES_AIRFLOW_PASSWORD:-airflow}@postgres:5432/mlflow
     ports:
       - "5000:5000"
     volumes:
-      # Bind-mount ./mlflow/ so mlflow.db and artifacts/ persist on the host
-      - ./mlflow:/mlflow
+      - ./mlflow/artifacts:/mlflow/artifacts
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:5000/health"]
       interval: 30s

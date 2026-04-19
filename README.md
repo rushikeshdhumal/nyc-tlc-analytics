@@ -47,6 +47,23 @@ Apache Superset             ← Interactive BI dashboards
 borough/vendor splits, demand heatmap (day × time of day), tip % by borough.
 ![NYC TLC Dashboard](docs/assets/dashboard_overview.jpg)
 
+## Pipeline DAG
+
+```mermaid
+flowchart LR
+    A[download_to_azure] --> B[create_bronze_table]
+    B --> C[copy_into_bronze]
+    C --> D[validate_bronze_load]
+    D --> E[dbt_transform]
+    subgraph E[dbt_transform]
+        F[stg_yellow_tripdata.run] --> F2[stg_yellow_tripdata.test]
+        F2 --> G[fct_revenue_per_zone_hourly.run]
+        G --> G2[fct_revenue_per_zone_hourly.test]
+        G2 --> H[fct_revenue_daily.run]
+        H --> H2[fct_revenue_daily.test]
+    end
+```
+
 ## Data Coverage
 
 NYC Yellow Taxi trips · January 2025 – present · Source: [NYC TLC Open Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)

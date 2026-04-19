@@ -24,6 +24,12 @@ jobs:
       AZURE_STORAGE_CONTAINER: ci
       AZURE_SAS_TOKEN: ci
       DBT_PROJECT_DIR: ${{ github.workspace }}/transform
+      SNOWFLAKE_ACCOUNT: dummy
+      SNOWFLAKE_USER: dummy
+      SNOWFLAKE_PASSWORD: dummy
+      SNOWFLAKE_ROLE: DE_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: NYC_TLC_DB
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -36,8 +42,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install apache-airflow==2.9.3
-          pip install -r requirements.txt
+          pip install ruff
+          pip install "apache-airflow==2.9.3" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.3/constraints-3.12.txt"
           pip install -r orchestration/requirements.txt
 
       - name: Lint Python
@@ -47,6 +54,9 @@ jobs:
       - name: Check Python syntax
         run: |
           python -m compileall orchestration infra
+
+      - name: Initialise Airflow metadata DB
+        run: airflow db init
 
       - name: Parse Airflow DAGs
         run: |

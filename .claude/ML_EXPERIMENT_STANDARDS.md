@@ -132,7 +132,7 @@ Document `did_estimate` and `p_value` in the ADR.
 | Tracking URI (inside Docker) | `http://mlflow:5000` |
 | Tracking URI (local terminal) | `http://localhost:5000` |
 | Artifact store | `./mlflow/artifacts` (bind-mounted volume) |
-| Backend store | SQLite at `./mlflow/mlflow.db` |
+| Backend store | PostgreSQL — `mlflow` database in the shared `postgres` container |
 
 Set in all training scripts:
 ```python

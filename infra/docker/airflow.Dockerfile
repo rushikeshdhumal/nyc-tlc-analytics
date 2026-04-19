@@ -35,7 +35,8 @@ RUN pip install --no-cache-dir \
     dbt-snowflake==1.8.4 \
     astronomer-cosmos==1.8.0 \
     azure-storage-blob==12.22.0 \
-    requests==2.32.3
+    requests==2.32.3 \
+    mlflow==2.16.0
 
 # Pin protobuf last — must win over the base image's 3.x
 RUN pip install --no-cache-dir "protobuf==4.25.3"

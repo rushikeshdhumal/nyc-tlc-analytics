@@ -29,3 +29,6 @@ protobuf==4.25.3
 # --- Azure Blob Storage (download_to_azure DAG task) ---
 azure-storage-blob==12.22.0
 requests==2.32.3
+
+# --- MLflow (mlflow_cleanup DAG + future ML DAGs) ---
+mlflow==2.16.0

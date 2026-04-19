@@ -110,6 +110,9 @@ jobs:
       - name: Build Airflow image
         run: docker build -f infra/docker/airflow.Dockerfile -t nyc-tlc-airflow:ci .
 
+      - name: Build MLflow image
+        run: docker build -f infra/docker/mlflow.Dockerfile -t nyc-tlc-mlflow:ci .
+
   dbt-snowflake-integration:
     name: dbt Snowflake Integration
     # TODO: Configure these repository secrets to enable this job:

@@ -560,13 +560,13 @@ optuna-integration[mlflow]>=3.6
 main
  └── ml-phase2                              # top-level ML branch — merges into main when all phases complete
       ├── ml/demand-forecast                # Phase 7 core pipeline: train, predict, Airflow DAG
-      │    └── ml/demand-forecast-quality   # quality layer: utils, notebooks, experiments
+      │    └── ml/demand-forecast-iterative-dev   # quality layer: utils, notebooks, experiments
       ├── ml/phase8-...                     # Phase 8 (DiD), future
       └── ml/phase9-...                     # Phase 9 (anomaly detection), future
 ```
 
 **Merge order**:
-1. `ml/demand-forecast-quality` → PR into `ml/demand-forecast` (quality layer completes Phase 7)
+1. `ml/demand-forecast-iterative-dev` → PR into `ml/demand-forecast` (quality layer completes Phase 7)
 2. `ml/demand-forecast` (complete Phase 7) → PR into `ml-phase2`
 3. Phase 8 and Phase 9 branch from `ml-phase2` after step 2 merges — they inherit
    `BaseForecaster`, all shared utils, and the notebook structure

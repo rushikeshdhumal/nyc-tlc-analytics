@@ -2,7 +2,7 @@
 upload_to_azure.py — NYC TLC BI Pipeline bootstrap loader
 
 Downloads Yellow Taxi Parquet files from the NYC TLC CloudFront CDN for the
-date scope Jan 2025 → latest available, then uploads them to Azure Blob
+date scope Jan 2024 → latest available, then uploads them to Azure Blob
 Storage for use as a Snowflake External Stage.
 
 USAGE
@@ -15,7 +15,7 @@ USAGE
     python infra/scripts/upload_to_azure.py --dry-run
 
     # Single month:
-    python infra/scripts/upload_to_azure.py --month 2025-03
+    python infra/scripts/upload_to_azure.py --month 2024-03
 
 REQUIRED ENV VARS (from .env)
 ------------------------------
@@ -45,7 +45,7 @@ TLC_CDN_URL = (
     "https://d37ci6vzurychx.cloudfront.net/trip-data/"
     "yellow_tripdata_{month}.parquet"
 )
-INGEST_START = date(2025, 1, 1)
+INGEST_START = date(2024, 1, 1)
 # TLC publishes with a ~2-month lag; stop before the current month to avoid
 # requesting files that don't exist yet.
 TLC_RELEASE_LAG_MONTHS = 2

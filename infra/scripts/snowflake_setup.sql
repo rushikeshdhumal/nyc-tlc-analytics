@@ -14,6 +14,16 @@
 -- Ref     : .claude/CLAUDE.md §3 (naming rules)
 --           .claude/DATA_LINEAGE_CONTRACTS.md §1 (Medallion layers)
 --           .claude/PROJECT_PLAN.md Phase 1
+--
+-- ACCOUNT MIGRATION: all source Parquet files live in Azure Blob Storage.
+--   Migrating to a new Snowflake account requires only:
+--   1. Run this script (snowflake_setup.sql)
+--   2. Run infra/scripts/ml_setup.sql
+--   3. Update SNOWFLAKE_ACCOUNT + SNOWFLAKE_PASSWORD + AIRFLOW_CONN_SNOWFLAKE_DEFAULT in .env
+--   4. Trigger ingest_nyc_taxi_raw DAG  →  populates Bronze
+--   5. Then dbt build --full-refresh    →  rebuilds Silver and Gold from Bronze
+--      (step 5 is optional if the DAG's dbt task group completes successfully)
+--   No data export from the old account is needed. MLflow stays local to Docker.
 -- =============================================================================
 
 
@@ -76,7 +86,7 @@ GRANT OWNERSHIP ON DATABASE NYC_TLC_DB TO ROLE DE_ROLE
 
 -- ===========================================================================
 -- 4. MEDALLION SCHEMAS
---    BRONZE → raw VARIANT ingestion from S3
+--    BRONZE → raw VARIANT ingestion from Azure Blob Storage, no transforms
 --    SILVER → cleaned, structured, deduplicated
 --    GOLD   → aggregated marts optimised for Superset / Tableau
 -- ===========================================================================
@@ -86,7 +96,7 @@ USE DATABASE NYC_TLC_DB;
 USE ROLE DE_ROLE;
 
 CREATE SCHEMA IF NOT EXISTS NYC_TLC_DB.BRONZE
-    COMMENT = 'Landing zone — 1:1 copy of S3 source, VARIANT format, no transforms';
+    COMMENT = 'Landing zone — 1:1 copy of Azure Blob Storage source, VARIANT format, no transforms';
 
 CREATE SCHEMA IF NOT EXISTS NYC_TLC_DB.SILVER
     COMMENT = 'Trusted zone — type-cast, deduplicated, filtered (dbt stg_ models)';
@@ -137,26 +147,26 @@ CREATE FILE FORMAT IF NOT EXISTS NYC_TLC_DB.BRONZE.PARQUET_FORMAT
 --      AZURE_SAS_TOKEN         → value of AZURE_SAS_TOKEN from .env
 --                                (omit the leading '?' from the token)
 --
---    DATE SCOPE: Jan 2025 → latest available.
+--    DATE SCOPE: Jan 2024 → latest available.
 --    The stage points at the entire container. Date filtering is applied via
 --    PATTERN at query time (COPY INTO / LIST). The canonical regex below
---    matches yellow_tripdata_2025-MM.parquet through 2029-MM.parquet and
+--    matches yellow_tripdata_2024-MM.parquet through 2029-MM.parquet and
 --    must be used in every COPY INTO command (Phase 2 Airflow DAG).
 --
 --    PATTERN (copy this into every COPY INTO):
---      '.*yellow_tripdata_202[5-9]-[0-9]{2}\\.parquet'
+--      '.*yellow_tripdata_202[4-9]-[0-9]{2}\\.parquet'
 -- ===========================================================================
 
 CREATE OR REPLACE STAGE NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
     URL            = 'azure://<AZURE_STORAGE_ACCOUNT>.blob.core.windows.net/<AZURE_STORAGE_CONTAINER>/'
     CREDENTIALS    = (AZURE_SAS_TOKEN = '<AZURE_SAS_TOKEN>')
     FILE_FORMAT    = NYC_TLC_DB.BRONZE.PARQUET_FORMAT
-    COMMENT        = 'External stage — Azure Blob Storage. Ingest scope: Jan 2025 onwards. Apply PATTERN filter on every COPY INTO.';
+    COMMENT        = 'External stage — Azure Blob Storage. Ingest scope: Jan 2024 onwards. Apply PATTERN filter on every COPY INTO.';
 
--- List all in-scope files (Jan 2025 → latest). Run after upload_to_azure.py
+-- List all in-scope files (Jan 2024 → latest). Run after upload_to_azure.py
 -- to confirm files are visible to Snowflake before running COPY INTO.
 LIST @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
-    PATTERN = '.*yellow_tripdata_202[5-9]-[0-9]{2}\.parquet';
+    PATTERN = '.*yellow_tripdata_202[4-9]-[0-9]{2}\.parquet';
 
 
 -- ===========================================================================
@@ -172,15 +182,15 @@ SHOW STAGES       IN SCHEMA NYC_TLC_DB.BRONZE;
 SHOW FILE FORMATS IN SCHEMA NYC_TLC_DB.BRONZE;
 SHOW ROLES        LIKE '%ROLE';
 
--- Connectivity test: list the first available 2025 file from the stage.
--- Expected: one row with name = 'yellow_tripdata_2025-01.parquet'
+-- Connectivity test: list the first available 2024 file from the stage.
+-- Expected: one row with name = 'yellow_tripdata_2024-01.parquet'
 LIST @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE
-    PATTERN = '.*yellow_tripdata_2025-01\\.parquet';
+    PATTERN = '.*yellow_tripdata_2024-01\\.parquet';
 
 -- Row-count sanity check against the stage (no COPY INTO yet, just a peek).
 SELECT METADATA$FILENAME,
        COUNT(*) AS row_count
 FROM   @NYC_TLC_DB.BRONZE.NYC_TLC_STAGE (
-           PATTERN => '.*yellow_tripdata_2025-12\\.parquet'
+           PATTERN => '.*yellow_tripdata_2024-12\\.parquet'
        )
 GROUP  BY 1;

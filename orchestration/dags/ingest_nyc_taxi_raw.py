@@ -2,9 +2,9 @@
 ingest_nyc_taxi_raw — Full monthly pipeline DAG
 
 Runs on the 1st of each month (catchup=True).
-start_date=2025-07-01, so the earliest scheduled logical_date is 2025-07-01,
-which targets 2025-05 via the 2-month TLC lag.
-Data for 2025-01 to 2025-04 must be backfilled manually.
+start_date=2024-03-01, so the earliest scheduled logical_date is 2024-03-01,
+which targets 2024-01 via the 2-month TLC lag. This covers the full ML
+training window (ML_FEATURE_CONTRACTS.md §Model 1: train from 2024-01-01).
 TLC publishes data with a ~2 month lag.
 download_to_azure checks a 6-month rolling window so any month missed due to
 TLC delays is caught automatically by the next run (e.g. June 2026 checks
@@ -100,7 +100,7 @@ _profile_config = ProfileConfig(
     dag_id="ingest_nyc_taxi_raw",
     description="End-to-end monthly pipeline: Bronze COPY INTO → dbt Silver → dbt Gold.",
     schedule="0 6 1 * *",       # 1st of every month at 06:00 UTC
-    start_date=datetime(2025, 7, 1),
+    start_date=datetime(2024, 3, 1),
     catchup=True,
     max_active_runs=1,
     tags=["bronze", "silver", "gold", "ingestion", "nyc-tlc"],

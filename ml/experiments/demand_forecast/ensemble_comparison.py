@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 
 import mlflow
 import numpy as np
@@ -35,14 +34,14 @@ from ml.models.demand_forecast.lgbm_forecaster import LGBMForecaster
 from ml.models.demand_forecast.train import _compute_splits
 from ml.models.demand_forecast.xgb_forecaster import XGBForecaster
 from ml.utils.evaluation import walk_forward_cv
-from ml.utils.mlflow_utils import get_or_create_experiment
+from ml.utils.mlflow_utils import get_or_create_experiment, setup_tracking
 
 EXPERIMENT_NAME = "demand_forecast_hourly"
 GAIN_THRESHOLD_PCT = 0.5
 
 
 def run_ensemble_comparison(run_date: str, cache_path: str | None = None) -> None:
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns"))
+    setup_tracking()
     experiment_id = get_or_create_experiment(EXPERIMENT_NAME)
     splits = _compute_splits(run_date)
 

@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 
 import mlflow
 import numpy as np
@@ -27,7 +26,7 @@ import pandas as pd
 from ml.features.demand_features import FEATURE_COLS, TARGET_COL, build_feature_matrix
 from ml.models.demand_forecast.lgbm_forecaster import LGBMForecaster
 from ml.models.demand_forecast.train import _compute_splits
-from ml.utils.mlflow_utils import get_or_create_experiment
+from ml.utils.mlflow_utils import get_or_create_experiment, setup_tracking
 
 EXPERIMENT_NAME = "demand_forecast_hourly"
 
@@ -42,7 +41,7 @@ _ABLATION_SETS: dict[str, list[str]] = {
 
 
 def run_ablation(run_date: str, cache_path: str | None = None) -> None:
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns"))
+    setup_tracking()
     experiment_id = get_or_create_experiment(EXPERIMENT_NAME)
     splits = _compute_splits(run_date)
 

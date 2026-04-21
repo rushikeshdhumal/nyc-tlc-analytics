@@ -34,7 +34,7 @@ from ml.models.demand_forecast.lgbm_forecaster import LGBMForecaster
 from ml.models.demand_forecast.ridge_forecaster import RidgeForecaster
 from ml.models.demand_forecast.train import _compute_splits
 from ml.models.demand_forecast.xgb_forecaster import XGBForecaster
-from ml.utils.mlflow_utils import get_or_create_experiment
+from ml.utils.mlflow_utils import get_or_create_experiment, setup_tracking
 
 EXPERIMENT_NAME = "demand_forecast_hourly"
 
@@ -62,7 +62,7 @@ def run_model_comparison(
     tier: int = 1,
     cache_path: str | None = None,
 ) -> None:
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns"))
+    setup_tracking()
     experiment_id = get_or_create_experiment(EXPERIMENT_NAME)
     splits = _compute_splits(run_date)
 

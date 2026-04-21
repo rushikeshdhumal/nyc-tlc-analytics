@@ -12,7 +12,13 @@ from mlflow.tracking import MlflowClient
 
 
 def setup_tracking() -> None:
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    if tracking_uri.startswith("file:"):
+        raise ValueError(
+            "File-based MLflow tracking is disabled for this project. "
+            "Set MLFLOW_TRACKING_URI to the MLflow server (for example, http://localhost:5000)."
+        )
+    mlflow.set_tracking_uri(tracking_uri)
 
 
 def get_or_create_experiment(name: str) -> str:

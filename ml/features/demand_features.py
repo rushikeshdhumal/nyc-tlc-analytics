@@ -21,7 +21,6 @@ FEATURE_COLS: list[str] = [
     "rolling_24h_avg_trip_count",
     "rolling_168h_avg_trip_count",
     "pu_location_id",
-    "pickup_borough_enc",
     "lag_168h_congestion_fees",
 ]
 TARGET_COL = "trip_count"

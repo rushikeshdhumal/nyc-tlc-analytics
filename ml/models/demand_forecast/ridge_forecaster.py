@@ -39,4 +39,4 @@ class RidgeForecaster:
     def log_model(self, artifact_path: str = "model") -> None:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("alpha", self.alpha)
-        mlflow.sklearn.log_model(self._model, name=artifact_path)
+        mlflow.sklearn.log_model(self._model, artifact_path=artifact_path)

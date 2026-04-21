@@ -147,7 +147,7 @@ class LSTMForecaster:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("hyperparams", json.dumps(params))
         mlflow.log_param("device", str(_get_device()))
-        mlflow.pytorch.log_model(self._model, name=artifact_path)
+        mlflow.pytorch.log_model(self._model, artifact_path=artifact_path)
 
 
 class _LSTMNet:

@@ -273,7 +273,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         )
         mlflow.log_artifact(_save_residuals(y_test, test_pred))
 
-        mlflow.lightgbm.log_model(model, name="model")
+        mlflow.lightgbm.log_model(model, artifact_path="model")
 
         run_id = run.info.run_id
 

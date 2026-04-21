@@ -76,4 +76,4 @@ class LGBMForecaster:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("log1p_target", self.log1p_target)
         mlflow.log_param("hyperparams", json.dumps(self.params))
-        mlflow.lightgbm.log_model(self._model, name=artifact_path)
+        mlflow.lightgbm.log_model(self._model, artifact_path=artifact_path)

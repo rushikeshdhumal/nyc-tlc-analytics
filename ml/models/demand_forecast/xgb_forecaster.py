@@ -62,4 +62,4 @@ class XGBForecaster:
             raise RuntimeError("Call fit() before log_model().")
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("hyperparams", json.dumps(self.params))
-        mlflow.xgboost.log_model(self._model, name=artifact_path)
+        mlflow.xgboost.log_model(self._model, artifact_path=artifact_path)

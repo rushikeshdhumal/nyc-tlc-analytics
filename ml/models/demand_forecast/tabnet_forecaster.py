@@ -81,7 +81,7 @@ class TabNetForecaster:
         mlflow.log_param("model_params", json.dumps(self.model_params))
         mlflow.log_param("fit_params", json.dumps(self.fit_params))
         mlflow.log_param("device", _get_device())
-        mlflow.sklearn.log_model(self._model, name=artifact_path)
+        mlflow.sklearn.log_model(self._model, artifact_path=artifact_path)
 
 
 def _get_device() -> str:

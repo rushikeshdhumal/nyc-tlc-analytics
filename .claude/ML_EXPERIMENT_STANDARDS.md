@@ -171,3 +171,16 @@ Set in all training scripts:
 import mlflow
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 ```
+### Version compatibility requirement
+
+- Keep the MLflow **client and server on the same major/minor version** to avoid
+  REST API mismatch during model artifact logging.
+- Minimum safe baseline for this project is currently:
+  - local client: `mlflow==2.19.0`
+  - Docker server: `mlflow==2.19.0`
+- Before Stage 4+ runs that call `model.log_model()`, verify both sides:
+  - `python -c "import mlflow; print(mlflow.__version__)"`
+  - `docker compose exec -T mlflow mlflow --version`
+- If versions differ, align them before running experiments. Do not switch
+  experiment scripts to local file tracking as a workaround; all runs must remain
+  in the server-backed tracking backend for clean lineage.

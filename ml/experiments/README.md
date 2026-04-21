@@ -28,6 +28,37 @@ Link MLflow run IDs so findings are reproducible.
 
 ---
 
+## 2026-04-21 — Stage 4 Preflight: MLflow Tracking Compatibility Fix
+
+**Context**
+- Stage 4 (`model_comparison.py`) failed during `model.log_model()` with:
+	`API request to endpoint /api/2.0/mlflow/logged-models failed with error code 404`.
+
+**Root cause**
+- Local Python environment had `mlflow==3.11.1` while Docker MLflow server was
+	`2.19.0`.
+- The 3.x client calls newer logged-model APIs not available on the 2.19 server,
+	causing artifact/model logging to fail even though metrics logging worked.
+
+**Fix applied**
+- Enforced clean, server-backed tracking in experiment scripts (removed local
+	`file:./mlruns` fallback).
+- Added a guard in `ml/utils/mlflow_utils.py` to reject file-based tracking URIs.
+- Aligned local client and server to `mlflow==2.19.0`.
+
+**Preflight checks before Stage 4**
+- Ensure required services are up:
+	`docker compose up -d postgres postgres-init mlflow`
+- Confirm server version:
+	`docker compose exec -T mlflow mlflow --version`
+- Confirm local version (inside `.venv-ml`):
+	`python -c "import mlflow; print(mlflow.__version__)"`
+- Required state: both print `2.19.0`.
+
+**Why this matters**
+- Keeps MLflow logging clean in a single backend (no split lineage).
+- Preserves model artifact logging for Stage 4+ instead of disabling it.
+
 ## 2026-04-21 — Stage 2: Baseline Comparison
 
 **run_date**: 2026-04-21

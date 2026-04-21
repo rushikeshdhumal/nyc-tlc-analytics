@@ -201,8 +201,8 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
     X_test = test_df[FEATURE_COLS].values
     y_test = test_df[TARGET_COL].values
 
-    dtrain = lgb.Dataset(X_train, label=y_train, feature_name=FEATURE_COLS)
-    dval = lgb.Dataset(X_val, label=y_val, feature_name=FEATURE_COLS, reference=dtrain)
+    dtrain = lgb.Dataset(X_train, label=np.log1p(y_train), feature_name=FEATURE_COLS)
+    dval   = lgb.Dataset(X_val,   label=np.log1p(y_val),   feature_name=FEATURE_COLS, reference=dtrain)
 
     callbacks = [
         lgb.early_stopping(stopping_rounds=50, verbose=False),
@@ -218,8 +218,8 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
             callbacks=callbacks,
         )
 
-        val_pred = model.predict(X_val)
-        test_pred = model.predict(X_test)
+        val_pred  = np.maximum(np.expm1(model.predict(X_val)),  0.0)
+        test_pred = np.maximum(np.expm1(model.predict(X_test)), 0.0)
 
         # Naive lag-168 baseline on holdout (ML_FEATURE_CONTRACTS.md §Model 1)
         baseline_raw = test_df["lag_168h_trip_count"].values
@@ -236,6 +236,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
 
         # Required params — ML_EXPERIMENT_STANDARDS.md §2
         mlflow.log_param("model_type", "lightgbm")
+        mlflow.log_param("log1p_target", True)
         mlflow.log_param("run_date", run_date)
         mlflow.log_param("train_start", train_start)
         mlflow.log_param("train_end",   train_end)
@@ -261,6 +262,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         mlflow.set_tag(
             "mlflow.runName", f"lightgbm__{train_end}__{val_mape:.1f}pct"
         )
+        mlflow.set_tag("stage", "production_candidate")
 
         # Required artifacts — ML_EXPERIMENT_STANDARDS.md §2
         mlflow.log_artifact(_save_feature_importance(model, FEATURE_COLS))
@@ -271,7 +273,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         )
         mlflow.log_artifact(_save_residuals(y_test, test_pred))
 
-        mlflow.lightgbm.log_model(model, artifact_path="model")
+        mlflow.lightgbm.log_model(model, name="model")
 
         run_id = run.info.run_id
 

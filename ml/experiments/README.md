@@ -59,6 +59,27 @@ Link MLflow run IDs so findings are reproducible.
 - Keeps MLflow logging clean in a single backend (no split lineage).
 - Preserves model artifact logging for Stage 4+ instead of disabling it.
 
+## 2026-04-21 — Stage 4: Model Comparison
+
+**run_date**: 2026-04-21  
+**MLflow experiment**: demand_forecast_hourly  
+**Splits**: train 2024-01-08 → 2025-12-31 | val 2026-01-01 → 2026-01-31 | test 2026-02-01 → 2026-02-28
+
+### Runs
+| Model | val_mape | test_mape | Notes |
+|---|---|---|---|
+| LightGBM | 35.33% | 35.22% | best model |
+| XGBoost | 48.92% | 48.12% | significantly behind LightGBM |
+| Ridge | 96.88% | 99.39% | near Stage 2 baseline range |
+
+### Findings
+- Stage 4 executed successfully with clean server-backed MLflow tracking and model artifact logging.
+- LightGBM is the clear winner for this split (large margin vs XGBoost and Ridge).
+- MLflow warnings about missing model signature/input example are non-blocking for this phase; runs were logged successfully.
+
+### Next step
+- Proceed to Stage 4b (ensemble exploration). Only keep an ensemble if it improves over LightGBM by >0.5% test MAPE.
+
 ## 2026-04-21 — Stage 2: Baseline Comparison
 
 **run_date**: 2026-04-21

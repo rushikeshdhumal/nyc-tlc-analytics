@@ -156,3 +156,7 @@ node_modules/
 
 # Local features cache parquet
 data/*
+
+# Temporary copilot instruction files
+.github/copilot-instructions.md
+.github/instructions/*

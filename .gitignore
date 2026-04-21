@@ -151,4 +151,8 @@ Desktop.ini
 # Node (if any front-end tooling is added later)
 node_modules/
 
+# System specs
 .claude/SYSTEM_SPECS.md
+
+# Local features cache parquet
+data/*

@@ -86,8 +86,29 @@ class EnsembleForecaster:
             return base_preds @ weights
 
         if self.strategy == "rank_average":
-            ranks = np.argsort(np.argsort(base_preds, axis=0), axis=0).astype(float)
-            return ranks.mean(axis=1)
+            n_samples = base_preds.shape[0]
+            if n_samples == 0:
+                return np.array([])
+
+            # Rank each model's predictions, then average normalized ranks.
+            ranks = np.empty_like(base_preds, dtype=float)
+            for idx in range(base_preds.shape[1]):
+                order = np.argsort(base_preds[:, idx], kind="mergesort")
+                ranks[order, idx] = np.arange(n_samples, dtype=float)
+
+            if n_samples > 1:
+                ranks /= float(n_samples - 1)
+            avg_rank = np.mean(ranks, axis=1)
+
+            # Map consensus ranks back to a realistic prediction scale.
+            blend_scale = np.mean(base_preds, axis=1)
+            sorted_scale = np.sort(blend_scale)
+            quantile_idx = np.clip(
+                np.rint(avg_rank * (n_samples - 1)).astype(int),
+                0,
+                n_samples - 1,
+            )
+            return np.maximum(sorted_scale[quantile_idx], 0.0)
 
         if self.strategy == "stacking":
             if self.meta_model is None:

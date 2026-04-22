@@ -11,6 +11,14 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 
+def _alias_from_stage(stage: str) -> str:
+    """Map legacy stage names to stable model aliases."""
+    normalized = stage.strip().lower()
+    if normalized in {"staging", "production", "archived"}:
+        return normalized
+    raise ValueError(f"Unsupported stage '{stage}'. Expected Staging/Production/Archived.")
+
+
 def setup_tracking() -> None:
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     if tracking_uri.startswith("file:"):
@@ -31,20 +39,31 @@ def get_or_create_experiment(name: str) -> str:
 
 
 def get_production_model(model_name: str) -> mlflow.pyfunc.PyFuncModel:
-    """Load the Production model from the MLflow Registry.
+    """Load the production model from MLflow Registry.
 
-    Raises RuntimeError if no Production version exists — never falls back to
-    a local file (ML_EXPERIMENT_STANDARDS.md §5).
+    Prefers the `production` alias (future-proof). Falls back to the legacy
+    `Production` stage for backward compatibility with older registrations.
+    Raises RuntimeError if neither exists.
     """
     setup_tracking()
     client = MlflowClient()
+
+    # Preferred path: registry alias (MLflow stages are deprecated).
+    try:
+        client.get_model_version_by_alias(model_name, "production")
+        return mlflow.pyfunc.load_model(f"models:/{model_name}@production")
+    except Exception:
+        pass
+
+    # Backward-compatible path for existing stage-based deployments.
     versions = client.get_latest_versions(model_name, stages=["Production"])
-    if not versions:
-        raise RuntimeError(
-            f"No Production model found for '{model_name}'. "
-            "Promote a Staging version to Production before running predictions."
-        )
-    return mlflow.pyfunc.load_model(f"models:/{model_name}/Production")
+    if versions:
+        return mlflow.pyfunc.load_model(f"models:/{model_name}/Production")
+
+    raise RuntimeError(
+        f"No production model found for '{model_name}'. "
+        "Assign alias 'production' (preferred) or promote a version to stage 'Production' before running predictions."
+    )
 
 
 def register_and_stage(
@@ -53,18 +72,21 @@ def register_and_stage(
     artifact_path: str = "model",
     stage: str = "Staging",
 ) -> str:
-    """Register a model version from a completed run and set its stage.
+    """Register a model version from a completed run and set its alias.
 
     Returns the registered version string.
-    Promotion from Staging → Production is a deliberate manual step
+    Promotion from staging → production is a deliberate manual step
     (ML_EXPERIMENT_STANDARDS.md §4).
     """
     setup_tracking()
     client = MlflowClient()
+    alias = _alias_from_stage(stage)
     result = mlflow.register_model(f"runs:/{run_id}/{artifact_path}", model_name)
-    client.transition_model_version_stage(
+
+    # Use aliases instead of stage transitions (stage API is deprecated).
+    client.set_registered_model_alias(
         name=model_name,
+        alias=alias,
         version=result.version,
-        stage=stage,
     )
     return result.version

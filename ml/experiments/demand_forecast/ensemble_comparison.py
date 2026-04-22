@@ -76,7 +76,7 @@ def run_ensemble_comparison(run_date: str, cache_path: str | None = None) -> Non
     strategies = [
         ("weighted_blend", _build_ensemble("weighted_blend")),
         ("rank_average", _build_ensemble("rank_average")),
-        ("stacking", _build_stacking_ensemble(df, FEATURE_COLS, TARGET_COL, run_date)),
+        ("stacking", _build_stacking_ensemble(df, FEATURE_COLS, TARGET_COL, run_date, X_train, y_train, X_val, y_val)),
     ]
 
     for strategy_name, ensemble in strategies:
@@ -120,9 +120,34 @@ def _build_stacking_ensemble(
     feature_cols: list[str],
     target_col: str,
     run_date: str,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
 ) -> EnsembleForecaster:
     lgbm = LGBMForecaster()
     xgb = XGBForecaster()
+
+    # Train base models on training data
+    lgbm.fit(X_train, y_train, X_val, y_val)
+    xgb.fit(X_train, y_train, X_val, y_val)
+
+    # Generate OOF predictions on validation set
+    lgbm_oof = lgbm.predict(X_val)
+    xgb_oof = xgb.predict(X_val)
+    X_oof = np.column_stack([lgbm_oof, xgb_oof])
+
+    # Train meta-learner on OOF predictions
+    meta_model = Ridge(alpha=1.0)
+    meta_model.fit(X_oof, y_val)
+
+    # Create ensemble with pre-trained base models and meta-learner
+    ensemble = EnsembleForecaster(
+        forecasters=[lgbm, xgb],
+        strategy="stacking",
+        meta_model=meta_model,
+    )
+    ensemble._fitted = True  # Mark as fitted since base models are already trained
 
     cv_lgbm = walk_forward_cv(LGBMForecaster(), df, feature_cols, target_col, run_date)
     cv_xgb = walk_forward_cv(XGBForecaster(), df, feature_cols, target_col, run_date)
@@ -133,11 +158,6 @@ def _build_stacking_ensemble(
         f"Walk-forward CV — XGBoost:  {cv_xgb['mape_mean']:.2f}% ± {cv_xgb['mape_std']:.2f}%"
     )
 
-    ensemble = EnsembleForecaster(
-        forecasters=[lgbm, xgb],
-        strategy="stacking",
-        meta_model=Ridge(alpha=1.0),
-    )
     return ensemble
 
 

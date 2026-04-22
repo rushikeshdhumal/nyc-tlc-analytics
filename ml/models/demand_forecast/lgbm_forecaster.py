@@ -70,10 +70,14 @@ class LGBMForecaster:
         raw = self._model.predict(X)
         return np.maximum(np.expm1(raw), 0.0) if self.log1p_target else raw
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         if self._model is None:
             raise RuntimeError("Call fit() before log_model().")
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("log1p_target", self.log1p_target)
         mlflow.log_param("hyperparams", json.dumps(self.params))
-        mlflow.lightgbm.log_model(self._model, artifact_path=artifact_path)
+        mlflow.lightgbm.log_model(
+            self._model,
+            artifact_path=artifact_path,
+            input_example=input_example,
+        )

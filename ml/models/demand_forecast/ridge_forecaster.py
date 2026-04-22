@@ -36,7 +36,11 @@ class RidgeForecaster:
         X_scaled = self._scaler.transform(X)
         return np.maximum(self._model.predict(X_scaled), 0.0)
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("alpha", self.alpha)
-        mlflow.sklearn.log_model(self._model, artifact_path=artifact_path)
+        mlflow.sklearn.log_model(
+            self._model,
+            artifact_path=artifact_path,
+            input_example=input_example,
+        )

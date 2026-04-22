@@ -112,7 +112,9 @@ def run_model_comparison(
             mlflow.log_param("run_date", run_date)
             for k, v in splits.items():
                 mlflow.log_param(k, v)
-            model.log_model()
+            # Pass representative input sample for MLflow signature inference
+            input_sample = train_df[FEATURE_COLS].values[:100]
+            model.log_model(input_example=input_sample)
             mlflow.log_metric("val_mape", val_mape)
             mlflow.log_metric("test_mape", mape)
             print(f"  val_mape={val_mape:.2f}%  test_mape={mape:.2f}%")

@@ -129,7 +129,7 @@ class LSTMForecaster:
         full_preds[self.lookback:] = np.maximum(preds, 0.0)
         return full_preds
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         if self._model is None:
             raise RuntimeError("Call fit() before log_model().")
         import torch
@@ -147,7 +147,11 @@ class LSTMForecaster:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("hyperparams", json.dumps(params))
         mlflow.log_param("device", str(_get_device()))
-        mlflow.pytorch.log_model(self._model, artifact_path=artifact_path)
+        mlflow.pytorch.log_model(
+            self._model,
+            artifact_path=artifact_path,
+            input_example=input_example,
+        )
 
 
 class _LSTMNet:

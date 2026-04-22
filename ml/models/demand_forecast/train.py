@@ -273,7 +273,11 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         )
         mlflow.log_artifact(_save_residuals(y_test, test_pred))
 
-        mlflow.lightgbm.log_model(model, artifact_path="model")
+        mlflow.lightgbm.log_model(
+            model,
+            artifact_path="model",
+            input_example=X_train[:100],  # Representative sample for signature inference
+        )
 
         run_id = run.info.run_id
 

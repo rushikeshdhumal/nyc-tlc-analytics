@@ -57,9 +57,13 @@ class XGBForecaster:
             raise RuntimeError("Call fit() before predict().")
         return self._model.predict(xgb.DMatrix(X))
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         if self._model is None:
             raise RuntimeError("Call fit() before log_model().")
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("hyperparams", json.dumps(self.params))
-        mlflow.xgboost.log_model(self._model, artifact_path=artifact_path)
+        mlflow.xgboost.log_model(
+            self._model,
+            artifact_path=artifact_path,
+            input_example=input_example,
+        )

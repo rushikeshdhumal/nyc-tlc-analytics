@@ -96,7 +96,7 @@ class EnsembleForecaster:
 
         raise ValueError(f"Unknown strategy: {self.strategy}")
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("strategy", self.strategy)
         mlflow.log_param("weights", json.dumps(self.weights))

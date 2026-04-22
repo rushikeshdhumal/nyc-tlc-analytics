@@ -93,7 +93,9 @@ def run_ensemble_comparison(run_date: str, cache_path: str | None = None) -> Non
             mlflow.log_param("run_date", run_date)
             for k, v in splits.items():
                 mlflow.log_param(k, v)
-            ensemble.log_model()
+            # Pass representative input sample for MLflow signature inference
+            input_sample = X_train[:100]
+            ensemble.log_model(input_example=input_sample)
             mlflow.log_metric("test_mape", mape)
             mlflow.log_metric("mape_gain_vs_best_individual", gain)
             mlflow.log_metric("gain_threshold_met", int(gain > GAIN_THRESHOLD_PCT))

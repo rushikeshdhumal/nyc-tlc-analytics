@@ -74,14 +74,18 @@ class TabNetForecaster:
         preds = self._model.predict(X.astype(np.float32))
         return np.maximum(preds.flatten(), 0.0)
 
-    def log_model(self, artifact_path: str = "model") -> None:
+    def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         if self._model is None:
             raise RuntimeError("Call fit() before log_model().")
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("model_params", json.dumps(self.model_params))
         mlflow.log_param("fit_params", json.dumps(self.fit_params))
         mlflow.log_param("device", _get_device())
-        mlflow.sklearn.log_model(self._model, artifact_path=artifact_path)
+        mlflow.sklearn.log_model(
+            self._model,
+            artifact_path=artifact_path,
+            input_example=input_example,
+        )
 
 
 def _get_device() -> str:

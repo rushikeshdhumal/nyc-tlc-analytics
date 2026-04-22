@@ -28,6 +28,27 @@ Link MLflow run IDs so findings are reproducible.
 
 ---
 
+## 2026-04-22 — Stage 4b: Ensemble Exploration
+
+**run_date**: 2026-04-22  
+**MLflow experiment**: demand_forecast_hourly  
+**Splits**: same windowing as Stage 4 (latest monthly holdout)
+
+### Runs
+| Strategy | test_mape | gain vs best individual | Threshold (>0.5%) | Result |
+|---|---|---|---|---|
+| weighted_blend | 40.67% | -5.45% | Not met | FAIL |
+| rank_average | 39.73% | -4.51% | Not met | FAIL |
+| stacking (Ridge meta) | 43.12% | -7.90% | Not met | FAIL |
+
+### Findings
+- No ensemble strategy improved over the best individual model.
+- LightGBM remains the best candidate.
+- Stage 4b gate failed (required improvement >0.5% test MAPE).
+
+### Next step
+- Proceed to Stage 5 (LightGBM-only hyperparameter tuning).
+
 ## 2026-04-21 — Stage 4 Preflight: MLflow Tracking Compatibility Fix
 
 **Context**

@@ -6,8 +6,10 @@ Staging.
 
 Usage:
   python -m ml.experiments.demand_forecast.hyperparameter_tuning --run-date 2026-04-22
-  python -m ml.experiments.demand_forecast.hyperparameter_tuning --run-date 2026-04-22 --features-cache data/features_eda.parquet
   python -m ml.experiments.demand_forecast.hyperparameter_tuning --run-date 2026-04-22 --n-trials 100 --timeout-seconds 7200
+  python -m ml.experiments.demand_forecast.hyperparameter_tuning --run-date 2026-04-22 --features-cache data/features_2026-04.parquet
+
+Default cache: data/features_eda.parquet (if exists, loads from cache; otherwise queries Snowflake).
 """
 from __future__ import annotations
 
@@ -348,7 +350,12 @@ def run_hyperparameter_tuning(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-date", required=True, metavar="YYYY-MM-DD")
-    parser.add_argument("--features-cache", metavar="PATH", default=None)
+    parser.add_argument(
+        "--features-cache",
+        metavar="PATH",
+        default="data/features_eda.parquet",
+        help="Path to feature cache (default: data/features_eda.parquet)",
+    )
     parser.add_argument("--n-trials", type=int, default=100)
     parser.add_argument("--timeout-seconds", type=int, default=None)
     parser.add_argument(

@@ -1,6 +1,6 @@
 """LightGBM demand forecasting — prediction script (Phase 7).
 
-Loads the Production model from MLflow Registry and writes predictions
+Loads the production alias model from MLflow Registry and writes predictions
 to NYC_TLC_DB.ML.fct_demand_forecast.
 
 Usage: python predict.py --run-date YYYY-MM-DD
@@ -15,7 +15,7 @@ Example: --run-date 2026-04-05  →  predicts for 2026-02-01 to 2026-02-28.
 Timeline for an April 5 retrain run:
   Apr 1: ingest_nyc_taxi_raw loads 2026-02 into Gold
   Apr 5: retrain_demand_forecast trains on data through 2026-02,
-         then predicts for 2026-02 using the Production model.
+      then predicts for 2026-02 using the production model alias.
 """
 from __future__ import annotations
 
@@ -53,10 +53,10 @@ def _prediction_window(run_date: str) -> tuple[str, str]:
 
 
 def run_predictions(run_date: str) -> int:
-    """Load Production model from MLflow Registry and write predictions to Snowflake.
+    """Load production model alias from MLflow Registry and write predictions to Snowflake.
 
     Generates predictions for the calendar month prior to run_date.
-    Raises RuntimeError if no Production model exists (ML_EXPERIMENT_STANDARDS.md §5).
+    Raises RuntimeError if no production model alias exists (ML_EXPERIMENT_STANDARDS.md §5).
     Returns number of rows written.
     """
     setup_tracking()
@@ -72,14 +72,14 @@ def run_predictions(run_date: str) -> int:
         raise ValueError(f"No feature data available for {pred_start} to {pred_end}")
 
     raw = model.predict(df[FEATURE_COLS])
-    predictions = np.asarray(raw).flatten()
+    predictions = np.maximum(np.expm1(np.asarray(raw).flatten()), 0.0)
 
     out = pd.DataFrame(
         {
             "PICKUP_HOUR": df["pickup_hour"].values,
             "PU_LOCATION_ID": df["pu_location_id"].values,
             "PREDICTED_TRIP_COUNT": predictions.clip(min=0).round().astype(int),
-            "MODEL_VERSION": "Production",
+            "MODEL_VERSION": "production",
             "_RUN_DATE": run_date,
         }
     )

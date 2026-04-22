@@ -89,17 +89,17 @@ This makes runs scannable in the MLflow UI without opening each one.
 
 ## 4. Model Registry and Promotion Rules
 
-### Stages
-MLflow Model Registry uses three stages:
+### Aliases
+MLflow Model Registry uses aliases for deployment targets:
 
-| Stage | Meaning |
+| Alias | Meaning |
 |---|---|
-| `Staging` | Candidate model — passed validation, not yet promoted |
-| `Production` | Current live model — used by Airflow DAG for predictions |
-| `Archived` | Superseded versions — kept for reproducibility |
+| `staging` | Candidate model — passed validation, not yet promoted |
+| `production` | Current live model — used by Airflow DAG for predictions |
+| `archived` | Superseded versions — kept for reproducibility |
 
 ### Promotion criteria (demand forecasting)
-A model may be promoted from `Staging` → `Production` only if:
+A model may be promoted from alias `staging` to alias `production` only if:
 1. `test_mape` < current Production model's `test_mape`
 2. `mape_vs_baseline` > 0 (beats the naive lag-168 baseline)
 3. All required params, metrics, and artifacts are logged
@@ -109,19 +109,19 @@ No quantitative threshold — manual review of `anomalies_flagged` count and
 `predictions_vs_actuals.png` before promotion.
 
 ### Promotion criteria (congestion pricing DiD)
-One-shot analysis — no Production stage. Register under `Staging` only.
+One-shot analysis — no production alias target. Register under `staging` only.
 Document `did_estimate` and `p_value` in the ADR.
 
 ---
 
 ## 5. Airflow DAG Integration
 
-- The `retrain_demand_forecast` DAG loads the `Production` stage model from
-  MLflow Registry by name: `models:/demand_forecast_hourly/Production`
-- If no `Production` model exists, the DAG must fail explicitly with a clear
+- The `retrain_demand_forecast` DAG loads the `production` alias model from
+  MLflow Registry by name: `models:/demand_forecast_hourly@production`
+- If no `production` model exists, the DAG must fail explicitly with a clear
   error — never fall back to a stale local file
-- After retraining, the DAG registers the new model as `Staging` and logs
-  a comparison metric. Promotion to `Production` is a manual step.
+- After retraining, the DAG registers the new model as `staging` and logs
+  a comparison metric. Promotion to `production` is a manual step.
 
 ---
 

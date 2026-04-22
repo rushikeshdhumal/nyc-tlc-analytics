@@ -52,7 +52,7 @@
 - [x] Write predictions back to Snowflake (`ML` schema, `fct_demand_forecast` table).
 - [ ] Add forecast vs. actuals chart to Superset dashboard.
 - [x] **Airflow DAG `retrain_demand_forecast`**: monthly retraining triggered as a downstream dependency of `ingest_nyc_taxi_raw` (after `dbt_transform` task group completes); loads latest features from Snowflake, retrains model, logs to MLflow, writes predictions back to Snowflake.
-  - **First-run note**: `write_predictions` will fail until a Staging model is manually promoted to Production in the MLflow UI (`http://localhost:5000`). This is expected — train once, review `mape_vs_baseline > 0`, promote, then subsequent runs are fully automated.
+  - **First-run note**: `write_predictions` will fail until a model version is assigned alias `production` in the MLflow UI (`http://localhost:5000`). This is expected — train once (alias `staging`), review `mape_vs_baseline > 0`, then promote by moving alias `production`.
 - [x] Write ADR-005: LightGBM over TFT for demand forecasting.
 
 ## Phase 8 (ML): Congestion Pricing Impact Analysis

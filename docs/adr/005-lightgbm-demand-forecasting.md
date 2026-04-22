@@ -102,7 +102,7 @@ future enhancement.
   (predictions used as pseudo-lags). For the current monthly pipeline the
   prediction window is the most recent completed month, so all lag features
   are available from actual Gold data — no recursion needed.
-- Promotion from `Staging` → `Production` requires `mape_vs_baseline > 0`
+- Promotion from alias `staging` to alias `production` requires `mape_vs_baseline > 0`
   (model must beat the naive lag-168 baseline on the holdout set). This check
   is logged as `mape_vs_baseline` in MLflow and evaluated manually before
   promotion.

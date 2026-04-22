@@ -2,7 +2,7 @@
 
 Usage: python train.py --run-date YYYY-MM-DD
 Logs experiment to MLflow under 'demand_forecast_hourly'.
-Writes best model to MLflow Model Registry as Staging.
+Registers best model in MLflow and assigns alias 'staging'.
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ def _save_residuals(y_true: np.ndarray, y_pred: np.ndarray) -> str:
 
 
 def run_training(run_date: str, cache_path: str | None = None) -> dict:
-    """Train LightGBM on rolling date splits, log to MLflow, register as Staging.
+    """Train LightGBM on rolling date splits, log to MLflow, register with alias 'staging'.
 
     cache_path: optional path to a Parquet file.
       - If the file exists: load features from disk (no Snowflake query).
@@ -162,7 +162,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
     Delete the file when new monthly data lands in Gold.
 
     Returns a dict with run metadata (run_id, version, metrics).
-    Promotion from Staging → Production is a deliberate manual step
+    Promotion from alias 'staging' to alias 'production' is a deliberate manual step
     (ML_EXPERIMENT_STANDARDS.md §4).
     """
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))

@@ -3,8 +3,8 @@ mlflow_cleanup — Monthly MLflow run archival DAG
 
 Runs on the 1st of each month at 02:00 UTC. Soft-deletes (archives) MLflow
 training runs older than 90 days from all registered experiments, skipping
-any run that backs an active Production or Staging model version in the
-Model Registry.
+any run that backs an active `production` or `staging` model alias in the
+Model Registry (with fallback for legacy stage-based versions).
 
 Task graph:
     cleanup_stale_runs
@@ -46,9 +46,19 @@ def mlflow_cleanup_dag() -> None:
             (datetime.now(timezone.utc) - timedelta(days=_RETENTION_DAYS)).timestamp() * 1000
         )
 
-        # Collect run_ids backing Production or Staging model versions — never delete these
+        # Collect run_ids backing active aliases (and legacy stages) — never delete these.
         protected_run_ids: set[str] = set()
         for rm in client.search_registered_models():
+            # Preferred path: alias-based protection.
+            for alias in ("production", "staging"):
+                try:
+                    mv = client.get_model_version_by_alias(rm.name, alias)
+                except Exception:
+                    continue
+                if mv.run_id:
+                    protected_run_ids.add(mv.run_id)
+
+            # Backward-compatible path: stage-based protection for older models.
             for mv in client.search_model_versions(f"name='{rm.name}'"):
                 if mv.current_stage in ("Production", "Staging") and mv.run_id:
                     protected_run_ids.add(mv.run_id)
@@ -77,7 +87,7 @@ def mlflow_cleanup_dag() -> None:
 
         print(
             f"Archived {deleted} MLflow run(s) older than {_RETENTION_DAYS} days. "
-            f"Protected {len(protected_run_ids)} run(s) backing active model versions."
+            f"Protected {len(protected_run_ids)} run(s) backing active model aliases."
         )
         return {"runs_deleted": deleted, "protected_count": len(protected_run_ids)}
 

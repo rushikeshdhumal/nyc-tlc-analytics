@@ -12,7 +12,7 @@ from mlflow.tracking import MlflowClient
 
 
 def _alias_from_stage(stage: str) -> str:
-    """Map legacy stage names to stable model aliases."""
+    """Map legacy stage names to model aliases."""
     normalized = stage.strip().lower()
     if normalized in {"staging", "production", "archived"}:
         return normalized
@@ -72,10 +72,10 @@ def register_and_stage(
     artifact_path: str = "model",
     stage: str = "Staging",
 ) -> str:
-    """Register a model version from a completed run and set its alias.
+    """Register a model version from a completed run and assign an alias.
 
     Returns the registered version string.
-    Promotion from staging → production is a deliberate manual step
+    Promotion from staging to production is a deliberate manual step
     (ML_EXPERIMENT_STANDARDS.md §4).
     """
     setup_tracking()

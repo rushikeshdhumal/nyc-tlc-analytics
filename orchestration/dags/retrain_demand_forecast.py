@@ -10,13 +10,13 @@ Task graph:
 
 retrain_model  — pulls full feature matrix from Gold, trains LightGBM,
                  logs all required params/metrics/artifacts to MLflow,
-                 registers new version as Staging. Promotion to Production
+                 registers new version with alias 'staging'. Promotion to alias 'production'
                  is a deliberate manual step (ML_EXPERIMENT_STANDARDS.md §4).
 
-write_predictions — loads the Production model from MLflow Registry and
+write_predictions — loads the alias 'production' model from MLflow Registry and
                     writes a month of predictions to ML.fct_demand_forecast.
-                    Fails explicitly if no Production model exists — this is
-                    expected on first run until a Staging version is promoted.
+                    Fails explicitly if no production model exists — this is
+                    expected on first run until a staging candidate is promoted.
 """
 from __future__ import annotations
 

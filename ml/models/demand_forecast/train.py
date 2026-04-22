@@ -22,6 +22,7 @@ import mlflow
 import mlflow.lightgbm
 import numpy as np
 import pandas as pd
+from mlflow.models.signature import infer_signature
 
 from ml.features.demand_features import FEATURE_COLS, TARGET_COL, build_feature_matrix
 from ml.utils.mlflow_utils import get_or_create_experiment, register_and_stage
@@ -280,10 +281,16 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         )
         mlflow.log_artifact(_save_residuals(y_test, test_pred))
 
+        # Log an explicit model contract so serving/prediction jobs can validate I/O schema.
+        input_example = pd.DataFrame(X_train[:100], columns=FEATURE_COLS)
+        output_example = np.maximum(np.expm1(model.predict(input_example.values)), 0.0)
+        signature = infer_signature(input_example, output_example)
+
         mlflow.lightgbm.log_model(
             model,
             artifact_path="model",
-            input_example=X_train[:100],  # Representative sample for signature inference
+            input_example=input_example,
+            signature=signature,
         )
 
         run_id = run.info.run_id

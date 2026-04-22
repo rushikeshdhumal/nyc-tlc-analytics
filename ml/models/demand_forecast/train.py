@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 from calendar import monthrange
 from datetime import date, timedelta
 
@@ -97,6 +98,12 @@ def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(np.abs(y_true - y_pred)))
 
 
+def _new_temp_png_path(prefix: str) -> str:
+    fd, path = tempfile.mkstemp(prefix=f"{prefix}_", suffix=".png")
+    os.close(fd)
+    return path
+
+
 def _save_feature_importance(model: lgb.Booster, feature_names: list[str]) -> str:
     importances = model.feature_importance(importance_type="gain")
     top_n = min(20, len(feature_names))
@@ -106,7 +113,7 @@ def _save_feature_importance(model: lgb.Booster, feature_names: list[str]) -> st
     ax.set_xlabel("Gain")
     ax.set_title("Top Feature Importances")
     fig.tight_layout()
-    path = "/tmp/feature_importance.png"
+    path = _new_temp_png_path("feature_importance")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
@@ -123,7 +130,7 @@ def _save_predictions_vs_actuals(
     ax.set_title(title)
     ax.legend()
     fig.tight_layout()
-    path = "/tmp/predictions_vs_actuals.png"
+    path = _new_temp_png_path("predictions_vs_actuals")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
@@ -138,7 +145,7 @@ def _save_residuals(y_true: np.ndarray, y_pred: np.ndarray) -> str:
     ax.set_ylabel("Residual")
     ax.set_title("Residuals (Holdout)")
     fig.tight_layout()
-    path = "/tmp/residuals.png"
+    path = _new_temp_png_path("residuals")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
@@ -311,11 +318,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--features-cache",
         metavar="PATH",
-        default=None,
+        default="data/features_eda.parquet",
         help=(
             "Path to a Parquet cache file for the feature matrix. "
             "Loads from disk if the file exists; queries Snowflake and saves otherwise. "
-            "Delete the file when new monthly Gold data lands."
+            "Delete the file when new monthly Gold data lands. "
+            "Default: data/features_eda.parquet"
         ),
     )
     args = parser.parse_args()

@@ -94,6 +94,11 @@ webserver_config.py
 # Docker-generated override files (machine-specific)
 docker-compose.override.yml
 
+# -----------------------------------------------------------------------------
+# MLflow
+# -----------------------------------------------------------------------------
+mlflow/artifacts
+mlruns/
 
 # -----------------------------------------------------------------------------
 # SNOWFLAKE / SQL OUTPUT

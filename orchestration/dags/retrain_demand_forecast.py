@@ -30,6 +30,7 @@ from airflow.decorators import dag, task
     schedule="0 6 5 * *",
     start_date=datetime(2026, 2, 1),
     catchup=False,
+    max_active_runs=1,
     tags=["mlops", "demand-forecast"],
 )
 def retrain_demand_forecast_dag() -> None:

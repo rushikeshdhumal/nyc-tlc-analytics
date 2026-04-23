@@ -21,14 +21,16 @@ from __future__ import annotations
 
 import argparse
 from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
+from mlflow import lightgbm as mlflow_lightgbm
+from mlflow.tracking import MlflowClient
 
 from ml.features.demand_features import FEATURE_COLS, build_feature_matrix
-from ml.utils.mlflow_utils import get_production_model, setup_tracking
-from ml.utils.snowflake_io import write_ml_table
+from ml.utils.mlflow_utils import setup_tracking
+from ml.utils.snowflake_io import delete_ml_rows, insert_demand_forecast_rows
 
 
 _TLC_LAG = 2  # months between run_date and last available Gold month
@@ -55,14 +57,20 @@ def _prediction_window(run_date: str) -> tuple[str, str]:
 def run_predictions(run_date: str) -> int:
     """Load production model alias from MLflow Registry and write predictions to Snowflake.
 
-    Generates predictions for the calendar month prior to run_date.
+    Generates predictions for the calendar month two months prior to run_date.
     Raises RuntimeError if no production model alias exists (ML_EXPERIMENT_STANDARDS.md §5).
     Returns number of rows written.
     """
     setup_tracking()
-    model = get_production_model("demand_forecast_hourly")
+    client = MlflowClient()
+    model_name = "demand_forecast_hourly"
+    production_version = client.get_model_version_by_alias(model_name, "production").version
+    model = mlflow_lightgbm.load_model(f"models:/{model_name}/{production_version}")
 
     pred_start, pred_end = _prediction_window(run_date)
+    pred_end_exclusive = (
+        datetime.strptime(pred_end, "%Y-%m-%d") + timedelta(days=1)
+    ).strftime("%Y-%m-%d")
     print(f"Generating predictions for {pred_start} to {pred_end}")
 
     df = build_feature_matrix(pred_start, pred_end)
@@ -71,20 +79,50 @@ def run_predictions(run_date: str) -> int:
     if df.empty:
         raise ValueError(f"No feature data available for {pred_start} to {pred_end}")
 
-    raw = model.predict(df[FEATURE_COLS])
+    df = df.reset_index(drop=True)
+    prediction_features = df[FEATURE_COLS].astype("float64")
+    raw = model.predict(prediction_features)
     predictions = np.maximum(np.expm1(np.asarray(raw).flatten()), 0.0)
+    predictions = np.round(predictions, 2)
+    pickup_hours = pd.to_datetime(df["pickup_hour"], utc=True).dt.tz_convert(None)
 
     out = pd.DataFrame(
         {
-            "PICKUP_HOUR": df["pickup_hour"].values,
-            "PU_LOCATION_ID": df["pu_location_id"].values,
-            "PREDICTED_TRIP_COUNT": predictions.clip(min=0).round().astype(int),
-            "MODEL_VERSION": "production",
-            "_RUN_DATE": run_date,
+            "PICKUP_HOUR": pd.Series(
+                [ts.to_pydatetime() for ts in pickup_hours],
+                dtype="object",
+            ),
+            "PU_LOCATION_ID": pd.Series(df["pu_location_id"].to_numpy(), dtype="int64"),
+            "PICKUP_BOROUGH": pd.Series(df["pickup_borough"].to_numpy(), dtype="object"),
+            "PREDICTED_TRIP_COUNT": pd.Series(
+                predictions.astype("float64"),
+                dtype="float64",
+            ),
+            "MODEL_VERSION": pd.Series([str(production_version)] * len(df), dtype="object"),
+            "_RUN_DATE": pd.Series(
+                [datetime.strptime(run_date, "%Y-%m-%d").date()] * len(df),
+                dtype="object",
+            ),
         }
     )
 
-    write_ml_table(out, "fct_demand_forecast", overwrite=False)
+    out = out.reset_index(drop=True)
+
+    # Clean up prior retries for the same run_date (including historically bad rows).
+    delete_ml_rows("fct_demand_forecast", f"_RUN_DATE = '{run_date}'")
+
+    # Make reruns idempotent for the full forecast window, regardless of run_date.
+    delete_ml_rows(
+        "fct_demand_forecast",
+        (
+            "PICKUP_HOUR >= TO_TIMESTAMP_NTZ('"
+            f"{pred_start} 00:00:00'"
+            ") AND PICKUP_HOUR < TO_TIMESTAMP_NTZ('"
+            f"{pred_end_exclusive} 00:00:00'"
+            ")"
+        ),
+    )
+    insert_demand_forecast_rows(out)
     print(f"Wrote {len(out):,} prediction rows to ML.fct_demand_forecast")
     return len(out)
 
@@ -95,7 +133,7 @@ if __name__ == "__main__":
         "--run-date",
         required=True,
         metavar="YYYY-MM-DD",
-        help="Execution date; predictions are generated for the preceding calendar month",
+        help="Execution date; predictions are generated for calendar month -2",
     )
     args = parser.parse_args()
     run_predictions(args.run_date)

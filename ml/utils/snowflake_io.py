@@ -87,7 +87,7 @@ def insert_demand_forecast_rows(df: pd.DataFrame) -> None:
     """Insert rows into ML.FCT_DEMAND_FORECAST with explicit SQL typing.
 
     This avoids Parquet/logical-type ambiguity in write_pandas for timestamp/date
-    columns and applies SQL ROUND(., 2) for prediction values.
+    columns.
     """
     required_columns = [
         "PICKUP_HOUR",
@@ -129,7 +129,7 @@ def insert_demand_forecast_rows(df: pd.DataFrame) -> None:
             MODEL_VERSION,
             _RUN_DATE
         )
-        VALUES (%s, %s, %s, ROUND(%s, 2), %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """
 
     with _connect() as conn:

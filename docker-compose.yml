@@ -74,6 +74,9 @@ x-airflow-common: &airflow-common
     # ── MLflow tracking server (mlflow_cleanup + future ML DAGs) ─────────
     MLFLOW_TRACKING_URI: http://mlflow:5000
 
+    # ── Local Python import path for project modules (ml/*) ───────────────
+    PYTHONPATH: /opt/airflow
+
     # ── Airflow connection — JSON format so SnowflakeHook finds account in extra_dejson ──
     # SnowflakeHook 5.x reads account from extra_dejson, not conn.host.
     # Single-quoted YAML string; docker-compose substitutes ${VAR} before passing to Airflow.
@@ -84,6 +87,11 @@ x-airflow-common: &airflow-common
     - ./orchestration/dags:/opt/airflow/dags
     - ./orchestration/plugins:/opt/airflow/plugins
     - ./orchestration/include:/opt/airflow/include
+    # ML package mounted for DAG tasks importing ml.* modules
+    - ./ml:/opt/airflow/ml
+    # Shared MLflow artifact store path so Airflow can write artifacts to the
+    # same local filesystem location used by the MLflow tracking server.
+    - ./mlflow:/mlflow
     # dbt project mounted so Astronomer Cosmos can parse it at runtime
     - ./transform:/opt/airflow/transform
     # Named volume for Airflow task logs (survives container restarts)

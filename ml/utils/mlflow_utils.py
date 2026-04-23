@@ -51,9 +51,18 @@ def get_production_model(model_name: str) -> mlflow.pyfunc.PyFuncModel:
     # Preferred path: registry alias (MLflow stages are deprecated).
     try:
         client.get_model_version_by_alias(model_name, "production")
-        return mlflow.pyfunc.load_model(f"models:/{model_name}@production")
     except Exception:
+        # Alias missing (or registry backend doesn't support aliases yet) —
+        # keep backward-compatible stage lookup below.
         pass
+    else:
+        try:
+            return mlflow.pyfunc.load_model(f"models:/{model_name}@production")
+        except Exception as exc:
+            raise RuntimeError(
+                f"Found alias 'production' for '{model_name}', but failed to load model URI "
+                f"models:/{model_name}@production"
+            ) from exc
 
     # Backward-compatible path for existing stage-based deployments.
     versions = client.get_latest_versions(model_name, stages=["Production"])

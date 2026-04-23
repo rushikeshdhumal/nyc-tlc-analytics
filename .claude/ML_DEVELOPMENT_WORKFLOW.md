@@ -88,9 +88,9 @@ ml/
 │   ├── base_forecaster.py         # NEW: model-agnostic interface (Protocol)
 │   ├── demand_forecast/
 │   │   ├── lgbm_forecaster.py     # LightGBM implementing BaseForecaster
-│   │   ├── xgb_forecaster.py      # XGBoost implementing BaseForecaster
-│   │   ├── lstm_forecaster.py     # PyTorch LSTM implementing BaseForecaster
-│   │   ├── tabnet_forecaster.py   # TabNet implementing BaseForecaster
+│   │   ├── xgb_forecaster.py      # XGBoost implementing BaseForecaster [POSTPONED]
+│   │   ├── lstm_forecaster.py     # PyTorch LSTM implementing BaseForecaster [POSTPONED]
+│   │   ├── tabnet_forecaster.py   # TabNet implementing BaseForecaster [POSTPONED]
 │   │   ├── ensemble_forecaster.py # stacking / blend wrapper
 │   │   ├── train.py               # production training entry point
 │   │   └── predict.py             # write predictions to Snowflake ML schema
@@ -177,11 +177,11 @@ Hardware feasibility is assessed against the memory tier table in §0.
 | Model | Framework | Tier | SHAP | Notes |
 |---|---|---|---|---|
 | `LightGBM` | lightgbm | 1 | TreeExplainer | Current production choice |
-| `XGBoost` | xgboost | 1 | TreeExplainer | Same family, different regularization |
+| `XGBoost` | xgboost | 1 | TreeExplainer | **POSTPONED** — will be implemented in a future iteration |
 | `Ridge Regression` | sklearn | 1 | LinearExplainer | Strong interpretable baseline |
 | `LightGBM + log target` | lightgbm | 1 | TreeExplainer | Try if EDA shows heavy right skew |
-| `TabNet` | pytorch-tabnet | 2 | attention weights | Tabular DL; no sequence reshape needed |
-| `LSTM (compact)` | pytorch + DirectML | 2 | DeepExplainer | Sequence input; needs reshape util |
+| `TabNet` | pytorch-tabnet | 2 | attention weights | **POSTPONED** — will be implemented in a future iteration |
+| `LSTM (compact)` | pytorch + DirectML | 2 | DeepExplainer | **POSTPONED** — will be implemented in a future iteration |
 | `LightGBM + XGBoost stack` | lightgbm + xgboost | 2 | per-model | Blend predictions via meta-learner |
 | `TFT (small config)` | pytorch + DirectML | 3 | attention weights | Only if multi-step horizon needed |
 
@@ -297,7 +297,7 @@ The Parquet cache stays tabular — reshaping is a model-side responsibility.
 All candidates are implemented as `BaseForecaster` and iterated in a loop:
 
 ```python
-candidates = [LGBMForecaster(), XGBForecaster(), RidgeForecaster(), TabNetForecaster()]
+candidates = [LGBMForecaster(), RidgeForecaster()]  # XGBForecaster, TabNetForecaster postponed
 for model in candidates:
     with mlflow.start_run():
         model.fit(X_train, y_train, X_val, y_val)
@@ -308,9 +308,10 @@ for model in candidates:
 ```
 
 **Tier guidance**:
-- LightGBM + XGBoost + Ridge: Tier 1 — run all simultaneously
-- TabNet: Tier 2 — stop Superset + Airflow workers before running
-- Compact LSTM: Tier 2 — requires PyTorch DirectML setup (see §7)
+- LightGBM + Ridge: Tier 1 — run simultaneously
+- XGBoost: Tier 1 — **POSTPONED**, will be added in a future iteration
+- TabNet: Tier 2 — **POSTPONED**, will be added in a future iteration
+- Compact LSTM: Tier 2 — **POSTPONED**, will be added in a future iteration
 
 **Exit criteria**:
 - Best model type identified by `val_mape`
@@ -591,10 +592,10 @@ main
 
 ### Model Implementations (BaseForecaster)
 - [ ] `ml/models/demand_forecast/lgbm_forecaster.py`
-- [ ] `ml/models/demand_forecast/xgb_forecaster.py`
+- [ ] `ml/models/demand_forecast/xgb_forecaster.py` **(POSTPONED — future iteration)**
 - [ ] `ml/models/demand_forecast/ridge_forecaster.py`
-- [ ] `ml/models/demand_forecast/tabnet_forecaster.py` (Tier 2)
-- [ ] `ml/models/demand_forecast/lstm_forecaster.py` (Tier 2, DirectML)
+- [ ] `ml/models/demand_forecast/tabnet_forecaster.py` (Tier 2) **(POSTPONED — future iteration)**
+- [ ] `ml/models/demand_forecast/lstm_forecaster.py` (Tier 2, DirectML) **(POSTPONED — future iteration)**
 - [ ] `ml/models/demand_forecast/ensemble_forecaster.py`
 
 ### Experiment Scripts

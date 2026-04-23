@@ -64,15 +64,15 @@ var) and directly on the host terminal (fallback `http://localhost:5000`).
 
 ### Model lifecycle
 
-Model versions progress through three stages: `Staging → Production → Archived`.
+Model versions use aliases: `staging`, `production`, and `archived`.
 
-The `retrain_demand_forecast` DAG registers new models as `Staging` after each
-monthly retraining run. Promotion to `Production` is a deliberate manual step,
-gated on `test_mape < current Production` and `mape_vs_baseline > 0`
+The `retrain_demand_forecast` DAG registers new models under alias `staging` after each
+monthly retraining run. Promotion to alias `production` is a deliberate manual step,
+gated on `test_mape < current production` and `mape_vs_baseline > 0`
 (`ML_EXPERIMENT_STANDARDS.md §4`).
 
 The `mlflow_cleanup` DAG soft-deletes training runs older than 90 days,
-protecting any run that backs a `Production` or `Staging` model version.
+protecting any run that backs a `production` or `staging` model alias.
 
 ---
 
@@ -81,13 +81,13 @@ protecting any run that backs a `Production` or `Staging` model version.
 | | MLflow (chosen) | Weights & Biases | DVC |
 |---|---|---|---|
 | **Self-hosted** | Yes (Docker Compose) | No (SaaS) | Yes |
-| **Model Registry** | Built-in with stages | Built-in | Git-based, no stage transitions |
+| **Model Registry** | Built-in with aliases and versions | Built-in | Git-based, no registry aliases |
 | **Python API** | First-class | First-class | CLI-focused |
 | **Cost** | Free | Free tier has limits | Free |
 | **Airflow integration** | Direct Python import | Direct Python import | CLI subprocess |
 
 W&B was excluded because it requires SaaS. DVC was excluded because its
-model registry lacks `Staging → Production` transitions required by the
+model registry lacks first-class alias promotion controls required by the
 MLOps governance rules in `ML_EXPERIMENT_STANDARDS.md`.
 
 ---
@@ -97,7 +97,7 @@ MLOps governance rules in `ML_EXPERIMENT_STANDARDS.md`.
 **Positive**
 - Full experiment lineage: every training run is reproducible from its logged
   params, metrics, feature list, and serialised model artifact.
-- Airflow retrain DAG loads the `Production` model by registry name — no
+- Airflow retrain DAG loads the `production` alias model by registry name — no
   file paths in DAG code, no silent stale-model risk.
 - MLflow UI at `http://localhost:5000` enables side-by-side run comparison
   without any extra tooling.

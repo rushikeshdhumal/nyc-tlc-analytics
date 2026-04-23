@@ -6,9 +6,11 @@ Features are read from NYC_TLC_DB.GOLD schema only — never Silver or Bronze.
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 
 import pandas as pd
 import snowflake.connector
+from snowflake.connector.errors import ProgrammingError
 from snowflake.connector.pandas_tools import write_pandas
 
 
@@ -26,7 +28,9 @@ def _connect() -> snowflake.connector.SnowflakeConnection:
 def read_gold(query: str) -> pd.DataFrame:
     """Execute a SELECT against the Gold schema and return a DataFrame."""
     with _connect() as conn:
-        return pd.read_sql(query, conn)
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            return cursor.fetch_pandas_all()
 
 
 def write_ml_table(
@@ -47,7 +51,7 @@ def write_ml_table(
             df=df,
             table_name=table_name.upper(),
             schema="ML",
-            auto_create_table=True,
+            auto_create_table=False,
             overwrite=overwrite,
         )
     if not success:
@@ -55,3 +59,85 @@ def write_ml_table(
             f"write_pandas failed writing to ML.{table_name}: "
             f"{nchunks} chunk(s), {nrows} row(s)"
         )
+
+
+def delete_ml_rows(table_name: str, where_clause: str) -> None:
+    """Delete rows from NYC_TLC_DB.ML.<table_name> matching a SQL WHERE clause."""
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            result = cursor.execute(
+                """
+                SELECT 1
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = 'ML'
+                  AND TABLE_NAME = %s
+                LIMIT 1
+                """,
+                (table_name.upper(),),
+            )
+            if result is None:
+                return
+            table_exists = result.fetchone()
+            if not table_exists:
+                return
+            cursor.execute(f"DELETE FROM ML.{table_name.upper()} WHERE {where_clause}")
+
+
+def insert_demand_forecast_rows(df: pd.DataFrame) -> None:
+    """Insert rows into ML.FCT_DEMAND_FORECAST with explicit SQL typing.
+
+    This avoids Parquet/logical-type ambiguity in write_pandas for timestamp/date
+    columns.
+    """
+    required_columns = [
+        "PICKUP_HOUR",
+        "PU_LOCATION_ID",
+        "PICKUP_BOROUGH",
+        "PREDICTED_TRIP_COUNT",
+        "MODEL_VERSION",
+        "_RUN_DATE",
+    ]
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns for forecast insert: {missing}")
+
+    pickup_hours = pd.to_datetime(df["PICKUP_HOUR"], errors="raise")
+    run_dates = pd.to_datetime(df["_RUN_DATE"], errors="raise").dt.date
+
+    pickup_hour_values: list[datetime] = [ts.to_pydatetime() for ts in pickup_hours]
+    run_date_values: list[date] = [d for d in run_dates]
+
+    records = list(
+        zip(
+            pickup_hour_values,
+            df["PU_LOCATION_ID"].astype("int64").tolist(),
+            df["PICKUP_BOROUGH"].astype("object").tolist(),
+            df["PREDICTED_TRIP_COUNT"].astype("float64").tolist(),
+            df["MODEL_VERSION"].astype("object").tolist(),
+            run_date_values,
+        )
+    )
+    if not records:
+        return
+
+    sql = """
+        INSERT INTO ML.FCT_DEMAND_FORECAST (
+            PICKUP_HOUR,
+            PU_LOCATION_ID,
+            PICKUP_BOROUGH,
+            PREDICTED_TRIP_COUNT,
+            MODEL_VERSION,
+            _RUN_DATE
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            try:
+                for i in range(0, len(records), 5000):
+                    cursor.executemany(sql, records[i : i + 5000])
+            except ProgrammingError:
+                # Defensive fallback for connector rewrite edge-cases in executemany.
+                for record in records:
+                    cursor.execute(sql, record)

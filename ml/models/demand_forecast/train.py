@@ -2,13 +2,14 @@
 
 Usage: python train.py --run-date YYYY-MM-DD
 Logs experiment to MLflow under 'demand_forecast_hourly'.
-Writes best model to MLflow Model Registry as Staging.
+Registers best model in MLflow and assigns alias 'staging'.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import tempfile
 from calendar import monthrange
 from datetime import date, timedelta
 
@@ -21,6 +22,7 @@ import mlflow
 import mlflow.lightgbm
 import numpy as np
 import pandas as pd
+from mlflow.models.signature import infer_signature
 
 from ml.features.demand_features import FEATURE_COLS, TARGET_COL, build_feature_matrix
 from ml.utils.mlflow_utils import get_or_create_experiment, register_and_stage
@@ -97,6 +99,12 @@ def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(np.abs(y_true - y_pred)))
 
 
+def _new_temp_png_path(prefix: str) -> str:
+    fd, path = tempfile.mkstemp(prefix=f"{prefix}_", suffix=".png")
+    os.close(fd)
+    return path
+
+
 def _save_feature_importance(model: lgb.Booster, feature_names: list[str]) -> str:
     importances = model.feature_importance(importance_type="gain")
     top_n = min(20, len(feature_names))
@@ -106,7 +114,7 @@ def _save_feature_importance(model: lgb.Booster, feature_names: list[str]) -> st
     ax.set_xlabel("Gain")
     ax.set_title("Top Feature Importances")
     fig.tight_layout()
-    path = "/tmp/feature_importance.png"
+    path = _new_temp_png_path("feature_importance")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
@@ -123,7 +131,7 @@ def _save_predictions_vs_actuals(
     ax.set_title(title)
     ax.legend()
     fig.tight_layout()
-    path = "/tmp/predictions_vs_actuals.png"
+    path = _new_temp_png_path("predictions_vs_actuals")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
@@ -138,14 +146,14 @@ def _save_residuals(y_true: np.ndarray, y_pred: np.ndarray) -> str:
     ax.set_ylabel("Residual")
     ax.set_title("Residuals (Holdout)")
     fig.tight_layout()
-    path = "/tmp/residuals.png"
+    path = _new_temp_png_path("residuals")
     fig.savefig(path, dpi=100)
     plt.close(fig)
     return path
 
 
 def run_training(run_date: str, cache_path: str | None = None) -> dict:
-    """Train LightGBM on rolling date splits, log to MLflow, register as Staging.
+    """Train LightGBM on rolling date splits, log to MLflow, register with alias 'staging'.
 
     cache_path: optional path to a Parquet file.
       - If the file exists: load features from disk (no Snowflake query).
@@ -155,7 +163,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
     Delete the file when new monthly data lands in Gold.
 
     Returns a dict with run metadata (run_id, version, metrics).
-    Promotion from Staging → Production is a deliberate manual step
+    Promotion from alias 'staging' to alias 'production' is a deliberate manual step
     (ML_EXPERIMENT_STANDARDS.md §4).
     """
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
@@ -201,8 +209,8 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
     X_test = test_df[FEATURE_COLS].values
     y_test = test_df[TARGET_COL].values
 
-    dtrain = lgb.Dataset(X_train, label=y_train, feature_name=FEATURE_COLS)
-    dval = lgb.Dataset(X_val, label=y_val, feature_name=FEATURE_COLS, reference=dtrain)
+    dtrain = lgb.Dataset(X_train, label=np.log1p(y_train), feature_name=FEATURE_COLS)
+    dval   = lgb.Dataset(X_val,   label=np.log1p(y_val),   feature_name=FEATURE_COLS, reference=dtrain)
 
     callbacks = [
         lgb.early_stopping(stopping_rounds=50, verbose=False),
@@ -218,8 +226,8 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
             callbacks=callbacks,
         )
 
-        val_pred = model.predict(X_val)
-        test_pred = model.predict(X_test)
+        val_pred  = np.maximum(np.expm1(model.predict(X_val)),  0.0)
+        test_pred = np.maximum(np.expm1(model.predict(X_test)), 0.0)
 
         # Naive lag-168 baseline on holdout (ML_FEATURE_CONTRACTS.md §Model 1)
         baseline_raw = test_df["lag_168h_trip_count"].values
@@ -236,6 +244,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
 
         # Required params — ML_EXPERIMENT_STANDARDS.md §2
         mlflow.log_param("model_type", "lightgbm")
+        mlflow.log_param("log1p_target", True)
         mlflow.log_param("run_date", run_date)
         mlflow.log_param("train_start", train_start)
         mlflow.log_param("train_end",   train_end)
@@ -261,6 +270,7 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         mlflow.set_tag(
             "mlflow.runName", f"lightgbm__{train_end}__{val_mape:.1f}pct"
         )
+        mlflow.set_tag("stage", "production_candidate")
 
         # Required artifacts — ML_EXPERIMENT_STANDARDS.md §2
         mlflow.log_artifact(_save_feature_importance(model, FEATURE_COLS))
@@ -271,7 +281,17 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
         )
         mlflow.log_artifact(_save_residuals(y_test, test_pred))
 
-        mlflow.lightgbm.log_model(model, artifact_path="model")
+        # Log an explicit model contract so serving/prediction jobs can validate I/O schema.
+        input_example = pd.DataFrame(X_train[:100], columns=FEATURE_COLS)
+        output_example = np.maximum(np.expm1(model.predict(input_example.values)), 0.0)
+        signature = infer_signature(input_example, output_example)
+
+        mlflow.lightgbm.log_model(
+            model,
+            artifact_path="model",
+            input_example=input_example,
+            signature=signature,
+        )
 
         run_id = run.info.run_id
 
@@ -305,11 +325,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--features-cache",
         metavar="PATH",
-        default=None,
+        default="data/features_eda.parquet",
         help=(
             "Path to a Parquet cache file for the feature matrix. "
             "Loads from disk if the file exists; queries Snowflake and saves otherwise. "
-            "Delete the file when new monthly Gold data lands."
+            "Delete the file when new monthly Gold data lands. "
+            "Default: data/features_eda.parquet"
         ),
     )
     args = parser.parse_args()

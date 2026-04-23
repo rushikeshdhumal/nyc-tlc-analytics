@@ -89,17 +89,17 @@ This makes runs scannable in the MLflow UI without opening each one.
 
 ## 4. Model Registry and Promotion Rules
 
-### Stages
-MLflow Model Registry uses three stages:
+### Aliases
+MLflow Model Registry uses aliases for deployment targets:
 
-| Stage | Meaning |
+| Alias | Meaning |
 |---|---|
-| `Staging` | Candidate model — passed validation, not yet promoted |
-| `Production` | Current live model — used by Airflow DAG for predictions |
-| `Archived` | Superseded versions — kept for reproducibility |
+| `staging` | Candidate model — passed validation, not yet promoted |
+| `production` | Current live model — used by Airflow DAG for predictions |
+| `archived` | Superseded versions — kept for reproducibility |
 
 ### Promotion criteria (demand forecasting)
-A model may be promoted from `Staging` → `Production` only if:
+A model may be promoted from alias `staging` to alias `production` only if:
 1. `test_mape` < current Production model's `test_mape`
 2. `mape_vs_baseline` > 0 (beats the naive lag-168 baseline)
 3. All required params, metrics, and artifacts are logged
@@ -109,19 +109,19 @@ No quantitative threshold — manual review of `anomalies_flagged` count and
 `predictions_vs_actuals.png` before promotion.
 
 ### Promotion criteria (congestion pricing DiD)
-One-shot analysis — no Production stage. Register under `Staging` only.
+One-shot analysis — no production alias target. Register under `staging` only.
 Document `did_estimate` and `p_value` in the ADR.
 
 ---
 
 ## 5. Airflow DAG Integration
 
-- The `retrain_demand_forecast` DAG loads the `Production` stage model from
-  MLflow Registry by name: `models:/demand_forecast_hourly/Production`
-- If no `Production` model exists, the DAG must fail explicitly with a clear
+- The `retrain_demand_forecast` DAG loads the `production` alias model from
+  MLflow Registry by name: `models:/demand_forecast_hourly@production`
+- If no `production` model exists, the DAG must fail explicitly with a clear
   error — never fall back to a stale local file
-- After retraining, the DAG registers the new model as `Staging` and logs
-  a comparison metric. Promotion to `Production` is a manual step.
+- After retraining, the DAG registers the new model as `staging` and logs
+  a comparison metric. Promotion to `production` is a manual step.
 
 ---
 
@@ -171,3 +171,16 @@ Set in all training scripts:
 import mlflow
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 ```
+### Version compatibility requirement
+
+- Keep the MLflow **client and server on the same major/minor version** to avoid
+  REST API mismatch during model artifact logging.
+- Minimum safe baseline for this project is currently:
+  - local client: `mlflow==2.19.0`
+  - Docker server: `mlflow==2.19.0`
+- Before Stage 4+ runs that call `model.log_model()`, verify both sides:
+  - `python -c "import mlflow; print(mlflow.__version__)"`
+  - `docker compose exec -T mlflow mlflow --version`
+- If versions differ, align them before running experiments. Do not switch
+  experiment scripts to local file tracking as a workaround; all runs must remain
+  in the server-backed tracking backend for clean lineage.

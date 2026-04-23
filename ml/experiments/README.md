@@ -188,3 +188,9 @@ The ablation confirms it's redundant. Update `demand_features.py` before Stage 4
 
 ### Next step
 - Proceed to Stage 6 (final evaluation) using Stage 4 LightGBM defaults (test_mape 35.22%).
+
+---
+
+## Status — Model Coverage
+
+LightGBM is the only model fully implemented through the 7-stage iterative workflow. XGBoost, LSTM, and TabNet forecaster implementations are **postponed** and will be developed in a future iteration. When resumed, each model will follow the same Stages 2–7 protocol defined in `ML_DEVELOPMENT_WORKFLOW.md`.

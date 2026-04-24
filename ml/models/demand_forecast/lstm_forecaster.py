@@ -15,8 +15,6 @@ Lookback window: 24 hours by default (covers same-hour-yesterday lag implicitly)
 from __future__ import annotations
 
 import json
-
-import mlflow
 import numpy as np
 
 
@@ -132,7 +130,7 @@ class LSTMForecaster:
     def log_model(self, artifact_path: str = "model", input_example: np.ndarray | None = None) -> None:
         if self._model is None:
             raise RuntimeError("Call fit() before log_model().")
-        import torch
+        # import torch
         import mlflow.pytorch
 
         params = {

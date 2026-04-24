@@ -58,15 +58,18 @@
 
 ## Phase 8 (ML): Congestion Pricing Impact Analysis
 - [ ] Define treatment (Manhattan CBD zones) and control (outer borough zones) groups.
-- [ ] Build difference-in-differences model: pre/post Jan 2025 congestion pricing rollout.
-- [ ] Quantify revenue and trip count impact per zone.
-- [ ] Visualize treatment effect in Superset.
-- [ ] **Airflow DAG `congestion_pricing_analysis`**: one-shot DAG (no schedule, manual trigger only) that runs the DiD analysis script and writes results to Snowflake `ML` schema.
+- [ ] Build incremental DiD model: growing post-treatment window (Jan 2025 – present); re-runs monthly as new data lands, stabilising the effect estimate over time.
+- [ ] Quantify revenue and trip count impact per zone; write aggregate results to `ML.fct_congestion_pricing_impact` (overwrite on each run — idempotent).
+- [ ] Visualize treatment effect in Superset (aggregate effect over time).
+- [ ] **Airflow DAG `congestion_pricing_analysis`**: triggered as a downstream dependency of `ingest_nyc_taxi_raw` (after `dbt_transform` completes, in parallel with `trigger_retrain_demand_forecast`); `schedule=None`, `reset_dag_run=True`.
 - [ ] Write ADR-008: DiD approach for congestion pricing causal inference.
+- [ ] *(Future)* Option 2: month-by-month cohort output — additive extension, no pipeline rework needed.
 
-## Phase 9 (ML): Anomaly Detection
-- [ ] Build rolling z-score baseline for daily trip count and revenue per zone.
-- [ ] Flag anomalous days (z > 3) and write to Snowflake `fct_anomalies` table.
-- [ ] Surface anomaly flags in Superset dashboard.
-- [ ] **Airflow DAG `detect_anomalies`**: monthly scoring DAG triggered after `ingest_nyc_taxi_raw` completes; runs anomaly scoring script against the latest Gold data and writes flags to Snowflake.
-- [ ] Write ADR-009: anomaly detection approach.
+## Phase 9 (ML): Model Monitoring & Drift Detection
+- [ ] Compute monthly prediction error metrics (MAE, RMSE, MAPE) against actuals in Gold — comparing `fct_demand_forecast` predictions to `fct_revenue_per_zone_hourly` trip counts for the same period.
+- [ ] Detect feature distribution drift: track mean/std of key lag features month-over-month; flag when drift exceeds a threshold (e.g. >2σ shift vs. training window baseline).
+- [ ] Write monitoring results to `ML.fct_model_monitoring` (one row per model version per month).
+- [ ] Surface model health in Superset: prediction error trend over time, drift flags, model version history.
+- [ ] **Airflow DAG `monitor_demand_forecast`**: triggered as a downstream dependency of `retrain_demand_forecast` (runs after predictions are written); `schedule=None`, `reset_dag_run=True`.
+- [ ] Automated retraining signal: if MAPE degrades beyond the production baseline threshold, log a warning and open a clear path to trigger retraining.
+- [ ] Write ADR-009: model monitoring and drift detection approach.

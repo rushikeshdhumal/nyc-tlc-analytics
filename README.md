@@ -142,5 +142,6 @@ predictions written to `NYC_TLC_DB.ML.fct_demand_forecast`.
 - **Congestion pricing impact analysis** (Phase 8) — Difference-in-differences model
   quantifying the revenue and demand effect of the January 2025 CBD congestion pricing
   rollout; treatment = Manhattan CBD zones, control = outer borough zones
-- **Anomaly detection** (Phase 9) — Rolling z-score baseline flagging unusual
-  demand/revenue days per zone; results written to `NYC_TLC_DB.ML.fct_anomalies`
+- **Model monitoring & drift detection** (Phase 9) — Monthly evaluation of LightGBM
+  prediction error vs. actuals; feature distribution drift tracking; results written
+  to `NYC_TLC_DB.ML.fct_model_monitoring` with automated retraining signal on degradation

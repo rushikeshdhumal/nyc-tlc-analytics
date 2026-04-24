@@ -1,9 +1,9 @@
 """
 retrain_demand_forecast — Monthly LightGBM demand forecast retrain DAG
 
-Runs on the 5th of each month at 06:00 UTC, giving the ingest_nyc_taxi_raw
-and dbt_transform pipelines time to land the previous month's data before
-this DAG fires.
+Triggered by ingest_nyc_taxi_raw after the dbt_transform task group completes,
+ensuring the latest Gold data is available before retraining starts.
+schedule=None — this DAG never runs on its own cron.
 
 Task graph:
     retrain_model >> write_predictions
@@ -27,7 +27,7 @@ from airflow.decorators import dag, task
 
 @dag(
     dag_id="retrain_demand_forecast",
-    schedule="0 6 5 * *",
+    schedule=None,
     start_date=datetime(2026, 2, 1),
     catchup=False,
     max_active_runs=1,

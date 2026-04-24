@@ -20,9 +20,12 @@ Task graph:
               ├─ stg_yellow_tripdata.run → stg_yellow_tripdata.test
               ├─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
               └─ fct_revenue_daily.run → fct_revenue_daily.test
+        >> trigger_retrain_demand_forecast
 
 Cosmos runs Silver tests before building Gold, so bad Silver data never
 reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
+trigger_retrain_demand_forecast fires retrain_demand_forecast (schedule=None)
+with the same logical_date so the retrain sees the freshly built Gold tables.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from pathlib import Path
 import requests
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from azure.storage.blob import BlobServiceClient
 from cosmos import DbtTaskGroup, ExecutionConfig, ProfileConfig, ProjectConfig, RenderConfig
@@ -318,6 +322,16 @@ def ingest_nyc_taxi_raw() -> None:
         ),
     )
 
+    # ── Trigger downstream ML retrain ────────────────────────────────────
+
+    trigger_retrain = TriggerDagRunOperator(
+        task_id="trigger_retrain_demand_forecast",
+        trigger_dag_id="retrain_demand_forecast",
+        logical_date="{{ ds }}",
+        wait_for_completion=False,
+        reset_dag_run=True,
+    )
+
     # ── Wire the graph ────────────────────────────────────────────────────
 
     summary = copy_into_bronze(logical_date="{{ ds }}")
@@ -328,6 +342,7 @@ def ingest_nyc_taxi_raw() -> None:
         >> summary
         >> validate_bronze_load(summary)
         >> dbt_transform
+        >> trigger_retrain
     )
 
 

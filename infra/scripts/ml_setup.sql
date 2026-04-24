@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_ANOMALIES (
 --    the current schema. Drop any existing table before re-running if needed.
 -- ===========================================================================
 
-CREATE OR REPLACE TABLE NYC_TLC_DB.ML.FCT_CONGESTION_PRICING_IMPACT (
+CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_CONGESTION_PRICING_IMPACT (
     PU_LOCATION_ID          INTEGER         NOT NULL COMMENT 'TLC taxi zone ID',
     PICKUP_BOROUGH          VARCHAR(50)              COMMENT 'Borough name',
     SERVICE_ZONE            VARCHAR(50)              COMMENT 'Service zone (e.g. Yellow Zone)',

@@ -83,6 +83,69 @@ def delete_ml_rows(table_name: str, where_clause: str) -> None:
             cursor.execute(f"DELETE FROM ML.{table_name.upper()} WHERE {where_clause}")
 
 
+def insert_congestion_impact_rows(df: pd.DataFrame) -> None:
+    """Insert rows into ML.FCT_CONGESTION_PRICING_IMPACT with explicit SQL typing.
+
+    Avoids Parquet/logical-type ambiguity in write_pandas for date columns.
+    """
+    required_columns = [
+        "pu_location_id", "pickup_borough", "service_zone", "period", "treated",
+        "avg_trip_count", "avg_revenue", "avg_congestion_fees",
+        "did_trip_count", "did_revenue",
+        "p_value_trip_count", "p_value_revenue",
+        "r2_trip_count", "r2_revenue",
+        "_run_date",
+    ]
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns for congestion impact insert: {missing}")
+
+    run_dates = pd.to_datetime(df["_run_date"], errors="raise").dt.date
+
+    records = list(
+        zip(
+            df["pu_location_id"].astype("int64").tolist(),
+            df["pickup_borough"].astype("object").tolist(),
+            df["service_zone"].astype("object").tolist(),
+            df["period"].astype("object").tolist(),
+            df["treated"].astype(bool).tolist(),
+            df["avg_trip_count"].astype("float64").tolist(),
+            df["avg_revenue"].astype("float64").tolist(),
+            df["avg_congestion_fees"].astype("float64").tolist(),
+            df["did_trip_count"].astype("float64").tolist(),
+            df["did_revenue"].astype("float64").tolist(),
+            df["p_value_trip_count"].astype("float64").tolist(),
+            df["p_value_revenue"].astype("float64").tolist(),
+            df["r2_trip_count"].astype("float64").tolist(),
+            df["r2_revenue"].astype("float64").tolist(),
+            list(run_dates),
+        )
+    )
+    if not records:
+        return
+
+    sql = """
+        INSERT INTO ML.FCT_CONGESTION_PRICING_IMPACT (
+            PU_LOCATION_ID, PICKUP_BOROUGH, SERVICE_ZONE, PERIOD, TREATED,
+            AVG_TRIP_COUNT, AVG_REVENUE, AVG_CONGESTION_FEES,
+            DID_TRIP_COUNT, DID_REVENUE,
+            P_VALUE_TRIP_COUNT, P_VALUE_REVENUE,
+            R2_TRIP_COUNT, R2_REVENUE,
+            _RUN_DATE
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            try:
+                for i in range(0, len(records), 5000):
+                    cursor.executemany(sql, records[i : i + 5000])
+            except ProgrammingError:
+                for record in records:
+                    cursor.execute(sql, record)
+
+
 def insert_demand_forecast_rows(df: pd.DataFrame) -> None:
     """Insert rows into ML.FCT_DEMAND_FORECAST with explicit SQL typing.
 

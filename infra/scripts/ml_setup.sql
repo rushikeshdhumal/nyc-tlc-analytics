@@ -76,19 +76,28 @@ CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_ANOMALIES (
 -- ===========================================================================
 -- 4. FCT_CONGESTION_PRICING_IMPACT
 --    Written by: ml/models/causal_inference/congestion_pricing_did.py
---    Grain     : pu_location_id × period (pre/post)
+--    Grain     : pu_location_id × period (pre/post) × _run_date
 --    Ref       : ML_FEATURE_CONTRACTS.md §Model 3
+--
+--    NOTE: Uses CREATE OR REPLACE so re-running this script always applies
+--    the current schema. Drop any existing table before re-running if needed.
 -- ===========================================================================
 
 CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_CONGESTION_PRICING_IMPACT (
     PU_LOCATION_ID          INTEGER         NOT NULL COMMENT 'TLC taxi zone ID',
     PICKUP_BOROUGH          VARCHAR(50)              COMMENT 'Borough name',
+    SERVICE_ZONE            VARCHAR(50)              COMMENT 'Service zone (e.g. Yellow Zone)',
     PERIOD                  VARCHAR(10)     NOT NULL COMMENT 'pre (before 2025-01-05) or post',
     TREATED                 BOOLEAN         NOT NULL COMMENT 'True = Manhattan CBD zone',
     AVG_TRIP_COUNT          FLOAT                    COMMENT 'Average daily trip count in this period',
-    AVG_REVENUE             FLOAT                    COMMENT 'Average daily revenue in this period',
-    DID_ESTIMATE            FLOAT                    COMMENT 'DiD β₃ — causal effect of congestion pricing',
-    P_VALUE                 FLOAT                    COMMENT 'p-value of DiD estimate',
+    AVG_REVENUE             FLOAT                    COMMENT 'Average daily revenue ($) in this period',
+    AVG_CONGESTION_FEES     FLOAT                    COMMENT 'Average daily congestion fees ($) in this period',
+    DID_TRIP_COUNT          FLOAT                    COMMENT 'DiD β₃ for trip_count — causal demand effect',
+    DID_REVENUE             FLOAT                    COMMENT 'DiD β₃ for total_revenue — causal revenue effect',
+    P_VALUE_TRIP_COUNT      FLOAT                    COMMENT 'p-value of DiD trip_count estimate',
+    P_VALUE_REVENUE         FLOAT                    COMMENT 'p-value of DiD revenue estimate',
+    R2_TRIP_COUNT           FLOAT                    COMMENT 'R² of trip_count DiD regression',
+    R2_REVENUE              FLOAT                    COMMENT 'R² of revenue DiD regression',
     _RUN_DATE               DATE            NOT NULL COMMENT 'Date this analysis was run'
 );
 

@@ -43,6 +43,8 @@ RUN pip install --no-cache-dir \
     numpy==1.26.4 \
     scikit-learn==1.5.2 \
     matplotlib==3.9.2 \
+    scipy==1.13.1 \
+    statsmodels==0.14.4 \
     snowflake-connector-python[pandas]==3.12.2 \
     pyarrow==18.1.0
 

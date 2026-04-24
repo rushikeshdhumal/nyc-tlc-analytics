@@ -158,6 +158,7 @@ node_modules/
 
 # System specs
 .claude/SYSTEM_SPECS.md
+.claude/progress.md
 
 # Local features cache parquet
 data/*

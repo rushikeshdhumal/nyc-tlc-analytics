@@ -20,12 +20,14 @@ Snowflake Silver            ← Typed, deduplicated, data quality filters applie
         │  dbt (Gold)
         ▼
 Snowflake Gold              ← Aggregated fact tables (hourly + daily grain)
-        │                                    │
-        ▼                                    ▼
-Apache Superset             ← BI     LightGBM retrain      ← MLflow Model Registry
-dashboards                           │
-                                     ▼
-                             Snowflake ML schema    ← fct_demand_forecast
+        │                                    │                        │
+        ▼                                    ▼                        ▼
+Apache Superset             ← BI     LightGBM retrain      DiD causal inference
+dashboards                           │  ← MLflow            (congestion pricing)
+                                     ▼                        │
+                             Snowflake ML schema    ←─────────┘
+                               fct_demand_forecast
+                               fct_congestion_pricing_impact
 ```
 
 ## Stack
@@ -35,7 +37,7 @@ dashboards                           │
 | Orchestration | Apache Airflow 2.x (TaskFlow API, Docker Compose) |
 | Storage | Azure Blob Storage + Snowflake (X-Small warehouse, Trial) |
 | Transformation | dbt-core 1.8.7 + dbt-snowflake 1.8.4 |
-| ML | LightGBM 4.5, MLflow 2.19 (experiment tracking + model registry) |
+| ML | LightGBM 4.5, statsmodels 0.14, MLflow 2.19 (experiment tracking + model registry) |
 | Visualization | Apache Superset |
 | CI | GitHub Actions (lint, DAG parse, dbt parse, ML import smoke test, Docker build) |
 
@@ -51,6 +53,7 @@ dashboards                           │
 | Model | Output table | Schedule |
 |---|---|---|
 | LightGBM demand forecast | `ML.fct_demand_forecast` | Monthly, triggered after `dbt_transform` |
+| DiD causal inference (congestion pricing) | `ML.fct_congestion_pricing_impact` | Monthly, triggered after `dbt_transform` (parallel with retrain) |
 
 ## Dashboards
 
@@ -76,12 +79,18 @@ flowchart LR
     end
 
     dbt --> T[trigger_retrain_demand_forecast]
+    dbt --> TC[trigger_congestion_pricing_analysis]
 
     subgraph retrain[retrain_demand_forecast]
         R1[retrain_model] --> R2[write_predictions]
     end
 
-    T -.->|triggers| retrain
+    subgraph congestion[congestion_pricing_analysis]
+        C1[run_analysis]
+    end
+
+    T  -.->|triggers| retrain
+    TC -.->|triggers| congestion
 ```
 
 ## Data Coverage
@@ -96,6 +105,7 @@ NYC Yellow Taxi trips · January 2024 – present · Source: [NYC TLC Open Data]
 - [ADR-004](docs/adr/004-automate-azure-download-in-dag.md) — Automate Azure download inside the DAG
 - [ADR-005](docs/adr/005-lightgbm-demand-forecasting.md) — LightGBM for demand forecasting
 - [ADR-006](docs/adr/006-mlflow-experiment-tracker.md) — MLflow as experiment tracker and model registry
+- [ADR-007](docs/adr/007-did-congestion-pricing-analysis.md) — Difference-in-differences OLS for congestion pricing impact estimation
 
 ## Running Locally
 
@@ -132,15 +142,13 @@ docs/            ADRs and engineering notes
 
 ## Roadmap
 
-**Phases 6–7 complete.** MLOps infrastructure is live (MLflow tracking server, model
-registry, monthly retrain DAG). LightGBM demand forecasting is in production —
-training on hourly trip counts per zone, evaluated against a lag-168 naive baseline,
-predictions written to `NYC_TLC_DB.ML.fct_demand_forecast`.
+**Phases 6–8 complete.** MLOps infrastructure is live (MLflow, monthly retrain DAG).
+LightGBM demand forecasting and DiD congestion pricing analysis are both in production —
+running in parallel each month after `dbt_transform` completes, writing results to the
+`NYC_TLC_DB.ML` schema.
 
 **Planned:**
 
-- **Congestion pricing impact analysis** (Phase 8) — Difference-in-differences model
-  quantifying the revenue and demand effect of the January 2025 CBD congestion pricing
-  rollout; treatment = Manhattan CBD zones, control = outer borough zones
-- **Anomaly detection** (Phase 9) — Rolling z-score baseline flagging unusual
-  demand/revenue days per zone; results written to `NYC_TLC_DB.ML.fct_anomalies`
+- **Model monitoring & drift detection** (Phase 9) — Monthly evaluation of LightGBM
+  prediction error vs. actuals; feature distribution drift tracking; results written
+  to `NYC_TLC_DB.ML.fct_model_monitoring` with automated retraining signal on degradation

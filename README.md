@@ -28,6 +28,7 @@ dashboards                           │  ← MLflow            (congestion pric
                              Snowflake ML schema    ←─────────┘
                                fct_demand_forecast
                                fct_congestion_pricing_impact
+                               fct_model_monitoring  ← monitor_demand_forecast DAG
 ```
 
 ## Stack
@@ -54,12 +55,7 @@ dashboards                           │  ← MLflow            (congestion pric
 |---|---|---|
 | LightGBM demand forecast | `ML.fct_demand_forecast` | Monthly, triggered after `dbt_transform` |
 | DiD causal inference (congestion pricing) | `ML.fct_congestion_pricing_impact` | Monthly, triggered after `dbt_transform` (parallel with retrain) |
-
-## Dashboards
-
-**NYC TLC Yellow Taxi Analytics** — KPI scorecards, revenue and trip trends,
-borough/vendor splits, demand heatmap (day × time of day), tip % by borough.
-![NYC TLC Dashboard](docs/assets/dashboard_overview.jpg)
+| Model monitoring & drift detection | `ML.fct_model_monitoring` | Monthly, triggered after `write_predictions` completes |
 
 ## Pipeline DAG
 
@@ -83,15 +79,27 @@ flowchart LR
 
     subgraph retrain[retrain_demand_forecast]
         R1[retrain_model] --> R2[write_predictions]
+        R2 --> R3[trigger_monitor_demand_forecast]
     end
 
     subgraph congestion[congestion_pricing_analysis]
         C1[run_analysis]
     end
 
+    subgraph monitoring[monitor_demand_forecast]
+        M1[run_monitoring]
+    end
+
     T  -.->|triggers| retrain
     TC -.->|triggers| congestion
+    R3 -.->|triggers| monitoring
 ```
+
+## Dashboards
+
+**NYC TLC Yellow Taxi Analytics** — KPI scorecards, revenue and trip trends,
+borough/vendor splits, demand heatmap (day × time of day), tip % by borough.
+![NYC TLC Dashboard](docs/assets/dashboard_overview.jpg)
 
 ## Data Coverage
 
@@ -106,6 +114,7 @@ NYC Yellow Taxi trips · January 2024 – present · Source: [NYC TLC Open Data]
 - [ADR-005](docs/adr/005-lightgbm-demand-forecasting.md) — LightGBM for demand forecasting
 - [ADR-006](docs/adr/006-mlflow-experiment-tracker.md) — MLflow as experiment tracker and model registry
 - [ADR-007](docs/adr/007-did-congestion-pricing-analysis.md) — Difference-in-differences OLS for congestion pricing impact estimation
+- [ADR-009](docs/adr/009-model-monitoring-drift-detection.md) — Model monitoring and feature drift detection approach
 
 ## Running Locally
 
@@ -142,13 +151,12 @@ docs/            ADRs and engineering notes
 
 ## Roadmap
 
-**Phases 6–8 complete.** MLOps infrastructure is live (MLflow, monthly retrain DAG).
-LightGBM demand forecasting and DiD congestion pricing analysis are both in production —
-running in parallel each month after `dbt_transform` completes, writing results to the
-`NYC_TLC_DB.ML` schema.
+**Phases 6–9 complete.** MLOps infrastructure is live with full observability:
+MLflow experiment tracking, monthly LightGBM retrain, DiD congestion pricing analysis,
+and model monitoring with feature drift detection — all running in a sequential trigger
+chain each month after `dbt_transform` completes, writing results to `NYC_TLC_DB.ML`.
 
-**Planned:**
+**Future:**
 
-- **Model monitoring & drift detection** (Phase 9) — Monthly evaluation of LightGBM
-  prediction error vs. actuals; feature distribution drift tracking; results written
-  to `NYC_TLC_DB.ML.fct_model_monitoring` with automated retraining signal on degradation
+- Superset monitoring dashboard (prediction error trend, drift flags, model version history)
+- XGBoost, LSTM, TabNet forecasters (deferred to post-`main` branch)

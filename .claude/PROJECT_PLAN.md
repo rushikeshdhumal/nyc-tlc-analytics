@@ -66,11 +66,12 @@
 - [x] `DAGS_ARE_PAUSED_AT_CREATION=false` added to docker-compose to prevent silent queuing of newly discovered DAGs.
 - [ ] *(Future)* Build Superset congestion pricing dashboard from `viz/superset/congestion_pricing_impact__v1.0.0__2026-04-23.notes.md`.
 
-## Phase 9 (ML): Model Monitoring & Drift Detection
-- [ ] Compute monthly prediction error metrics (MAE, RMSE, MAPE) against actuals in Gold — comparing `fct_demand_forecast` predictions to `fct_revenue_per_zone_hourly` trip counts for the same period.
-- [ ] Detect feature distribution drift: track mean/std of key lag features month-over-month; flag when drift exceeds a threshold (e.g. >2σ shift vs. training window baseline).
-- [ ] Write monitoring results to `ML.fct_model_monitoring` (one row per model version per month).
-- [ ] Surface model health in Superset: prediction error trend over time, drift flags, model version history.
-- [ ] **Airflow DAG `monitor_demand_forecast`**: triggered as a downstream dependency of `retrain_demand_forecast` (runs after predictions are written); `schedule=None`, `reset_dag_run=True`.
-- [ ] Automated retraining signal: if MAPE degrades beyond the production baseline threshold, log a warning and open a clear path to trigger retraining.
-- [ ] Write ADR-008: model monitoring and drift detection approach.
+## Phase 9 (ML): Model Monitoring & Drift Detection ✅
+- [x] Compute monthly prediction error metrics (MAE, RMSE, MAPE) against actuals in Gold — comparing `fct_demand_forecast` predictions to `fct_revenue_per_zone_hourly` trip counts for the same period.
+- [x] Detect feature distribution drift: track mean/std of key lag features month-over-month; flag when drift exceeds 2σ vs. training window baseline stored as `feature_baseline.json` MLflow artifact (zero extra Snowflake credits).
+- [x] Write monitoring results to `ML.fct_model_monitoring` (one row per run_date; idempotent delete-then-insert).
+- [x] **Airflow DAG `monitor_demand_forecast`**: triggered as a downstream dependency of `retrain_demand_forecast` (after `write_predictions`); `schedule=None`, `reset_dag_run=True`. Verified end-to-end.
+- [x] MAPE degradation signal: `mape_degraded = True` if current MAPE > training test_mape × 1.2 OR current MAPE > naive lag-168 baseline MAPE. Emits Airflow WARNING log; no auto-retrain (cost guard on Snowflake Trial).
+- [x] `train.py` extended to log `feature_baseline.json` artifact on every retrain run.
+- [x] Write ADR-009: model monitoring and drift detection approach.
+- [ ] *(Future)* Build Superset monitoring dashboard: prediction error trend, drift flags, model version history.

@@ -8,11 +8,8 @@ Logs shap_summary.png to the active MLflow run.
 """
 from __future__ import annotations
 
-import os
-
 import matplotlib
 import numpy as np
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

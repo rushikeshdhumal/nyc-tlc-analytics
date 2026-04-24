@@ -20,12 +20,12 @@ Task graph:
               ├─ stg_yellow_tripdata.run → stg_yellow_tripdata.test
               ├─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
               └─ fct_revenue_daily.run → fct_revenue_daily.test
-        >> trigger_retrain_demand_forecast
+        >> [trigger_retrain_demand_forecast, trigger_congestion_pricing_analysis]
 
 Cosmos runs Silver tests before building Gold, so bad Silver data never
 reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
-trigger_retrain_demand_forecast fires retrain_demand_forecast (schedule=None)
-with the same logical_date so the retrain sees the freshly built Gold tables.
+Both ML triggers fire in parallel after dbt_transform completes (schedule=None,
+reset_dag_run=True on each) with the same logical_date.
 """
 
 from __future__ import annotations
@@ -322,11 +322,19 @@ def ingest_nyc_taxi_raw() -> None:
         ),
     )
 
-    # ── Trigger downstream ML retrain ────────────────────────────────────
+    # ── Trigger downstream ML DAGs (parallel after dbt_transform) ────────
 
     trigger_retrain = TriggerDagRunOperator(
         task_id="trigger_retrain_demand_forecast",
         trigger_dag_id="retrain_demand_forecast",
+        logical_date="{{ ds }}",
+        wait_for_completion=False,
+        reset_dag_run=True,
+    )
+
+    trigger_congestion = TriggerDagRunOperator(
+        task_id="trigger_congestion_pricing_analysis",
+        trigger_dag_id="congestion_pricing_analysis",
         logical_date="{{ ds }}",
         wait_for_completion=False,
         reset_dag_run=True,
@@ -342,7 +350,7 @@ def ingest_nyc_taxi_raw() -> None:
         >> summary
         >> validate_bronze_load(summary)
         >> dbt_transform
-        >> trigger_retrain
+        >> [trigger_retrain, trigger_congestion]
     )
 
 

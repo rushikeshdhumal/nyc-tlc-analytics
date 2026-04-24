@@ -1,0 +1,42 @@
+# =============================================================================
+# ML module dependencies — installed in the ml/ execution environment.
+# These are NOT installed in the Airflow container; ML scripts run directly
+# on the host or in a dedicated ML container (future Phase).
+# =============================================================================
+
+# --- Feature engineering & model training ---
+lightgbm==4.5.0
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.5.2
+
+# --- Experiment tracking & model registry ---
+mlflow==2.19.0
+
+# --- Snowflake I/O (with pandas integration) ---
+snowflake-connector-python[pandas]==3.12.2
+pyarrow>=18.0.0
+
+# --- Causal inference (DiD regression) ---
+statsmodels>=0.14.4
+
+# --- Visualisation (artifact plots) ---
+matplotlib==3.9.2
+
+# --- Hyperparameter tuning ---
+optuna>=3.6
+optuna-integration[mlflow]>=3.6
+
+# --- Additional model candidates ---
+xgboost>=2.1.0
+
+# --- Interpretability ---
+shap>=0.46.0
+
+# --- Deep learning (Tier 2 — stop Airflow workers + Superset before training) ---
+# torch and torch-directml must be installed manually on Windows AMD GPU:
+#   pip install torch
+#   pip install torch-directml>=0.2
+# They are excluded here because torch-directml is Windows-only and pip
+# install inside Linux-based Docker containers will fail.
+pytorch-tabnet>=4.1

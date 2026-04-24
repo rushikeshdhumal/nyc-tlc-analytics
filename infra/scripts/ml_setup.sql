@@ -103,7 +103,33 @@ CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_CONGESTION_PRICING_IMPACT (
 
 
 -- ===========================================================================
--- 5. VERIFICATION
+-- 5. FCT_MODEL_MONITORING
+--    Written by: ml/monitoring/monitor.py
+--    Grain     : one row per monitoring run (run_date = monthly retrain date)
+--    Ref       : progress.md Phase 9
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS NYC_TLC_DB.ML.FCT_MODEL_MONITORING (
+    MONITOR_DATE            DATE            NOT NULL COMMENT 'run_date of the monitoring run (monthly)',
+    PREDICTION_MONTH        VARCHAR(7)      NOT NULL COMMENT 'YYYY-MM of the scored forecast window',
+    MODEL_VERSION           VARCHAR(50)     NOT NULL COMMENT 'MLflow registered model version',
+    MODEL_RUN_ID            VARCHAR(100)    NOT NULL COMMENT 'MLflow run_id of the production model',
+    MAE                     FLOAT                    COMMENT 'Mean Absolute Error vs Gold actuals',
+    RMSE                    FLOAT                    COMMENT 'Root Mean Squared Error vs Gold actuals',
+    MAPE                    FLOAT                    COMMENT 'Mean Absolute Percentage Error vs Gold actuals (%)',
+    TRAINING_TEST_MAPE      FLOAT                    COMMENT 'test_mape logged at training time for this model version',
+    BASELINE_MAPE           FLOAT                    COMMENT 'Naive lag-168 MAPE logged at training time',
+    MAPE_DEGRADED           BOOLEAN         NOT NULL COMMENT 'True if MAPE > training_test_mape * 1.2 OR MAPE > baseline_mape',
+    N_PREDICTIONS           INTEGER                  COMMENT 'Rows in fct_demand_forecast for this run_date',
+    N_ACTUALS               INTEGER                  COMMENT 'Prediction rows with matching Gold actuals',
+    DRIFTED_FEATURES        VARCHAR                  COMMENT 'Comma-separated feature names that shifted > 2σ vs training baseline',
+    N_DRIFTED_FEATURES      INTEGER         NOT NULL DEFAULT 0 COMMENT 'Count of drifted features',
+    _SCORED_AT              TIMESTAMP_NTZ   NOT NULL COMMENT 'Timestamp when this monitoring row was written'
+);
+
+
+-- ===========================================================================
+-- 6. VERIFICATION
 -- ===========================================================================
 
 SHOW SCHEMAS IN DATABASE NYC_TLC_DB;

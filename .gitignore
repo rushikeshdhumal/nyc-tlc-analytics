@@ -94,6 +94,11 @@ webserver_config.py
 # Docker-generated override files (machine-specific)
 docker-compose.override.yml
 
+# -----------------------------------------------------------------------------
+# MLflow
+# -----------------------------------------------------------------------------
+mlflow/artifacts
+mlruns/
 
 # -----------------------------------------------------------------------------
 # SNOWFLAKE / SQL OUTPUT
@@ -150,3 +155,13 @@ Desktop.ini
 
 # Node (if any front-end tooling is added later)
 node_modules/
+
+# System specs
+.claude/SYSTEM_SPECS.md
+
+# Local features cache parquet
+data/*
+
+# Temporary copilot instruction files
+.github/copilot-instructions.md
+.github/instructions/*

@@ -45,14 +45,16 @@
 
 ## Phase 7 (ML): Demand Forecasting
 - [x] Load 2024 historical data (Jan–Dec 2024) into Bronze and run `dbt build --full-refresh`. Bronze now has ~94M rows covering Jan 2024 – present.
-- [ ] Build feature extraction script: pull from `fct_revenue_per_zone_hourly`, engineer lag and calendar features.
-- [ ] Train LightGBM model: hourly trip count per zone, time-series cross-validation.
-- [ ] Log experiment to MLflow: params, metrics (MAE, RMSE, MAPE), feature importances.
-- [ ] Register best model in MLflow Model Registry.
-- [ ] Write predictions back to Snowflake (`ML` schema, `fct_demand_forecast` table).
-- [ ] Add forecast vs. actuals chart to Superset dashboard.
-- [ ] **Airflow DAG `retrain_demand_forecast`**: monthly retraining triggered as a downstream dependency of `ingest_nyc_taxi_raw` (after `dbt_transform` task group completes); loads latest features from Snowflake, retrains model, logs to MLflow, writes predictions back to Snowflake.
-- [ ] Write ADR-005: LightGBM over TFT for demand forecasting.
+- [x] Build feature extraction script: pull from `fct_revenue_per_zone_hourly`, engineer lag and calendar features.
+- [x] Train LightGBM model: hourly trip count per zone, early stopping on rolling validation window (splits derived from `run_date` via `_compute_splits()`).
+- [x] Log experiment to MLflow: params, metrics (MAE, RMSE, MAPE), feature importances.
+- [x] Register best model in MLflow Model Registry.
+- [x] Write predictions back to Snowflake (`ML` schema, `fct_demand_forecast` table).
+- [x] **Airflow DAG `retrain_demand_forecast`**: monthly retraining triggered as a downstream dependency of `ingest_nyc_taxi_raw` (after `dbt_transform` task group completes); loads latest features from Snowflake, retrains model, logs to MLflow, writes predictions back to Snowflake.
+  - **First-run note**: `write_predictions` will fail until a model version is assigned alias `production` in the MLflow UI (`http://localhost:5000`). This is expected — train once (alias `staging`), review `mape_vs_baseline > 0`, then promote by moving alias `production`.
+- [x] **CI**: extend lint + syntax check to `ml/`; add `ml-checks` job with module import smoke test (postponed forecasters skipped).
+  - **Note**: when you resume XGB/LSTM/TabNet, the only CI changes needed are removing those three entries from `POSTPONED` in the smoke test and adding `pytorch-tabnet` back to `requirements-ci.txt`.
+- [x] Write ADR-005: LightGBM over TFT for demand forecasting.
 
 ## Phase 8 (ML): Congestion Pricing Impact Analysis
 - [ ] Define treatment (Manhattan CBD zones) and control (outer borough zones) groups.

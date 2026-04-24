@@ -59,12 +59,30 @@ All features must be constructed from data with timestamps **strictly before** `
 this on MAPE on the holdout set before promotion to Production in MLflow.
 
 ### Train / validation / test split
-Dataset spans Jan 2024 – Jan 2026 (25 months). Splits are fixed dates, not relative:
-- **Train**: 2024-01-01 to 2025-10-31 (22 months)
-- **Validation**: 2025-11-01 to 2025-12-31 (2 months — used for hyperparameter tuning)
-- **Test / holdout**: 2026-01-01 to 2026-01-31 (1 month — never used during training or tuning)
-- Never shuffle. Always sort by `pickup_hour` ascending before splitting.
-- When new monthly data arrives, extend train end by one month and roll validation/test forward.
+Splits are **rolling** — derived from `run_date` at training time so each monthly
+retrain automatically incorporates the latest ingested data. Never shuffle; always
+sort by `pickup_hour` ascending before splitting.
+
+Given `run_date` (Airflow `ds`), boundaries are computed by `_compute_splits()` in
+`ml/models/demand_forecast/train.py`:
+
+| Window | Definition |
+|---|---|
+| **Test** (holdout) | Calendar month = `run_date` month − 2 (last complete month in Gold, per TLC lag) |
+| **Validation** | Calendar month immediately before test |
+| **Train** | `2024-01-01` (INGEST_START) → day before validation start |
+
+Example — `run_date = 2026-04-05` (April DAG run, 2026-02 data just landed):
+- Train: 2024-01-01 → 2025-12-31
+- Val:   2026-01-01 → 2026-01-31
+- Test:  2026-02-01 → 2026-02-28
+
+### Prediction window
+`predict.py` uses the same TLC lag offset: predictions target `run_date month − 2`,
+i.e., the month that was just ingested. Actuals are therefore already in Gold,
+enabling immediate forecast-vs-actuals comparison in Superset.
+
+Example — `run_date = 2026-04-05` → predicts for **2026-02-01 to 2026-02-28**.
 
 ---
 

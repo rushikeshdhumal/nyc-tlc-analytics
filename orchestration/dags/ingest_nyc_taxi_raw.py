@@ -2,9 +2,9 @@
 ingest_nyc_taxi_raw — Full monthly pipeline DAG
 
 Runs on the 1st of each month (catchup=True).
-start_date=2025-07-01, so the earliest scheduled logical_date is 2025-07-01,
-which targets 2025-05 via the 2-month TLC lag.
-Data for 2025-01 to 2025-04 must be backfilled manually.
+start_date=2024-03-01, so the earliest scheduled logical_date is 2024-03-01,
+which targets 2024-01 via the 2-month TLC lag. This covers the full ML
+training window (ML_FEATURE_CONTRACTS.md §Model 1: train from 2024-01-01).
 TLC publishes data with a ~2 month lag.
 download_to_azure checks a 6-month rolling window so any month missed due to
 TLC delays is caught automatically by the next run (e.g. June 2026 checks
@@ -20,9 +20,12 @@ Task graph:
               ├─ stg_yellow_tripdata.run → stg_yellow_tripdata.test
               ├─ fct_revenue_per_zone_hourly.run → fct_revenue_per_zone_hourly.test
               └─ fct_revenue_daily.run → fct_revenue_daily.test
+        >> trigger_retrain_demand_forecast
 
 Cosmos runs Silver tests before building Gold, so bad Silver data never
 reaches the Gold layer (DATA_LINEAGE_CONTRACTS.md §3).
+trigger_retrain_demand_forecast fires retrain_demand_forecast (schedule=None)
+with the same logical_date so the retrain sees the freshly built Gold tables.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from pathlib import Path
 import requests
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from azure.storage.blob import BlobServiceClient
 from cosmos import DbtTaskGroup, ExecutionConfig, ProfileConfig, ProjectConfig, RenderConfig
@@ -100,7 +104,7 @@ _profile_config = ProfileConfig(
     dag_id="ingest_nyc_taxi_raw",
     description="End-to-end monthly pipeline: Bronze COPY INTO → dbt Silver → dbt Gold.",
     schedule="0 6 1 * *",       # 1st of every month at 06:00 UTC
-    start_date=datetime(2025, 7, 1),
+    start_date=datetime(2024, 3, 1),
     catchup=True,
     max_active_runs=1,
     tags=["bronze", "silver", "gold", "ingestion", "nyc-tlc"],
@@ -318,6 +322,16 @@ def ingest_nyc_taxi_raw() -> None:
         ),
     )
 
+    # ── Trigger downstream ML retrain ────────────────────────────────────
+
+    trigger_retrain = TriggerDagRunOperator(
+        task_id="trigger_retrain_demand_forecast",
+        trigger_dag_id="retrain_demand_forecast",
+        logical_date="{{ ds }}",
+        wait_for_completion=False,
+        reset_dag_run=True,
+    )
+
     # ── Wire the graph ────────────────────────────────────────────────────
 
     summary = copy_into_bronze(logical_date="{{ ds }}")
@@ -328,6 +342,7 @@ def ingest_nyc_taxi_raw() -> None:
         >> summary
         >> validate_bronze_load(summary)
         >> dbt_transform
+        >> trigger_retrain
     )
 
 

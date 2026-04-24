@@ -9,6 +9,7 @@
 #   - protobuf 4.x               (required by dbt-core 1.8.x)
 #   - azure-storage-blob         (download_to_azure DAG task)
 #   - requests                   (TLC CDN download)
+#   - lightgbm + sklearn + matplotlib + Snowflake connector for ML DAG tasks
 #
 # Dependencies are installed in two steps to avoid pip ResolutionTooDeep:
 #   1. Main packages (snowflake provider, dbt, cosmos, azure)
@@ -36,7 +37,14 @@ RUN pip install --no-cache-dir \
     astronomer-cosmos==1.8.0 \
     azure-storage-blob==12.22.0 \
     requests==2.32.3 \
-    mlflow==2.16.0
+    mlflow==2.19.0 \
+    lightgbm==4.5.0 \
+    pandas==2.1.4 \
+    numpy==1.26.4 \
+    scikit-learn==1.5.2 \
+    matplotlib==3.9.2 \
+    snowflake-connector-python[pandas]==3.12.2 \
+    pyarrow==18.1.0
 
 # Pin protobuf last — must win over the base image's 3.x
 RUN pip install --no-cache-dir "protobuf==4.25.3"

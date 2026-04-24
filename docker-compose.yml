@@ -74,6 +74,9 @@ x-airflow-common: &airflow-common
     # ── MLflow tracking server (mlflow_cleanup + future ML DAGs) ─────────
     MLFLOW_TRACKING_URI: http://mlflow:5000
 
+    # ── Local Python import path for project modules (ml/*) ───────────────
+    PYTHONPATH: /opt/airflow
+
     # ── Airflow connection — JSON format so SnowflakeHook finds account in extra_dejson ──
     # SnowflakeHook 5.x reads account from extra_dejson, not conn.host.
     # Single-quoted YAML string; docker-compose substitutes ${VAR} before passing to Airflow.
@@ -84,6 +87,11 @@ x-airflow-common: &airflow-common
     - ./orchestration/dags:/opt/airflow/dags
     - ./orchestration/plugins:/opt/airflow/plugins
     - ./orchestration/include:/opt/airflow/include
+    # ML package mounted for DAG tasks importing ml.* modules
+    - ./ml:/opt/airflow/ml
+    # Shared MLflow artifact store path so Airflow can write artifacts to the
+    # same local filesystem location used by the MLflow tracking server.
+    - ./mlflow:/mlflow
     # dbt project mounted so Astronomer Cosmos can parse it at runtime
     - ./transform:/opt/airflow/transform
     # Named volume for Airflow task logs (survives container restarts)
@@ -130,14 +138,9 @@ services:
       PGPASSWORD: ${POSTGRES_AIRFLOW_PASSWORD:-airflow}
     command: >
       sh -c "set -e;
-      if psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow
-        -tAc \"SELECT 1 FROM pg_database WHERE datname='mlflow'\"
-        | grep -q 1; then
-        echo 'mlflow database already exists, skipping.';
-      else
-        psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow
-        -c 'CREATE DATABASE mlflow';
-        echo 'Created mlflow database.';
+      if psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow -tAc \"SELECT 1 FROM pg_database WHERE datname='mlflow'\" | grep -q 1;
+      then echo 'mlflow database already exists, skipping.';
+      else psql -v ON_ERROR_STOP=1 -h postgres -U airflow -d airflow -c 'CREATE DATABASE mlflow' && echo 'Created mlflow database.';
       fi"
     depends_on:
       postgres:
@@ -259,6 +262,31 @@ services:
     depends_on:
       superset-init:
         condition: service_completed_successfully
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ── JupyterLab  →  http://localhost:8888 ────────────────────────────────
+  # Tier 1: runs alongside all other services (~7 GB available for training).
+  # For Tier 2 DL runs: docker compose stop airflow-worker airflow-scheduler superset
+  # For Tier 3 large ensembles: docker compose stop airflow-worker airflow-scheduler superset jupyter
+  #   then run Jupyter natively: jupyter lab --notebook-dir=.
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/home/jovyan/work
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
+      SNOWFLAKE_USER: ${SNOWFLAKE_USER}
+      SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
+      SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
+      SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
+      SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE}
+    depends_on:
+      - mlflow
     networks:
       - backend
     restart: unless-stopped

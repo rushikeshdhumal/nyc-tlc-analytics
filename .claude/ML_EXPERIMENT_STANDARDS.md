@@ -29,12 +29,12 @@ Every training run must log all of the following before the run is considered co
 |---|---|---|
 | `model_type` | Algorithm name | `lightgbm` |
 | `run_date` | Date the training script was executed | `2026-04-18` |
-| `train_start` | Start date of training data | `2024-01-01` |
-| `train_end` | End date of training data | `2025-10-31` |
-| `val_start` | Start date of validation window | `2025-11-01` |
-| `val_end` | End date of validation window | `2025-12-31` |
-| `test_start` | Start date of holdout window | `2026-01-01` |
-| `test_end` | End date of holdout window | `2026-01-31` |
+| `train_start` | Start date of training data (always `2024-01-01`) | `2024-01-01` |
+| `train_end` | End date of training data (rolls forward each month) | `2025-12-31` |
+| `val_start` | Start of validation window (month before test) | `2026-01-01` |
+| `val_end` | End of validation window | `2026-01-31` |
+| `test_start` | Start of holdout window (last complete Gold month) | `2026-02-01` |
+| `test_end` | End of holdout window | `2026-02-28` |
 | `features` | Comma-separated list of feature names | `hour_of_day,lag_168h_trip_count,...` |
 | `n_features` | Total number of features | `12` |
 | `hyperparams` | JSON string of model hyperparameters | `{"n_estimators": 500, "lr": 0.05}` |
@@ -79,9 +79,9 @@ Set `mlflow.set_tag("mlflow.runName", ...)` using this format:
 {model_type}__{train_end}__{val_mape:.1f}pct
 ```
 
-Examples:
-- `lightgbm__2025-10-31__8.3pct`
-- `lightgbm__2025-10-31__12.1pct`
+Examples (train_end rolls forward with each monthly retrain):
+- `lightgbm__2025-12-31__8.3pct`
+- `lightgbm__2026-01-31__7.9pct`
 
 This makes runs scannable in the MLflow UI without opening each one.
 
@@ -89,17 +89,17 @@ This makes runs scannable in the MLflow UI without opening each one.
 
 ## 4. Model Registry and Promotion Rules
 
-### Stages
-MLflow Model Registry uses three stages:
+### Aliases
+MLflow Model Registry uses aliases for deployment targets:
 
-| Stage | Meaning |
+| Alias | Meaning |
 |---|---|
-| `Staging` | Candidate model — passed validation, not yet promoted |
-| `Production` | Current live model — used by Airflow DAG for predictions |
-| `Archived` | Superseded versions — kept for reproducibility |
+| `staging` | Candidate model — passed validation, not yet promoted |
+| `production` | Current live model — used by Airflow DAG for predictions |
+| `archived` | Superseded versions — kept for reproducibility |
 
 ### Promotion criteria (demand forecasting)
-A model may be promoted from `Staging` → `Production` only if:
+A model may be promoted from alias `staging` to alias `production` only if:
 1. `test_mape` < current Production model's `test_mape`
 2. `mape_vs_baseline` > 0 (beats the naive lag-168 baseline)
 3. All required params, metrics, and artifacts are logged
@@ -109,23 +109,55 @@ No quantitative threshold — manual review of `anomalies_flagged` count and
 `predictions_vs_actuals.png` before promotion.
 
 ### Promotion criteria (congestion pricing DiD)
-One-shot analysis — no Production stage. Register under `Staging` only.
+One-shot analysis — no production alias target. Register under `staging` only.
 Document `did_estimate` and `p_value` in the ADR.
 
 ---
 
 ## 5. Airflow DAG Integration
 
-- The `retrain_demand_forecast` DAG loads the `Production` stage model from
-  MLflow Registry by name: `models:/demand_forecast_hourly/Production`
-- If no `Production` model exists, the DAG must fail explicitly with a clear
+- The `retrain_demand_forecast` DAG loads the `production` alias model from
+  MLflow Registry by name: `models:/demand_forecast_hourly@production`
+- If no `production` model exists, the DAG must fail explicitly with a clear
   error — never fall back to a stale local file
-- After retraining, the DAG registers the new model as `Staging` and logs
-  a comparison metric. Promotion to `Production` is a manual step.
+- After retraining, the DAG registers the new model as `staging` and logs
+  a comparison metric. Promotion to `production` is a manual step.
 
 ---
 
-## 6. MLflow Tracking Server
+## 6. Local Development — Feature Cache
+
+`train.py` supports a `--features-cache PATH` flag to avoid re-querying Snowflake
+on every local training run. The feature matrix (~25 months of Gold data, ~4.7M rows)
+takes ~30s to pull; the cache eliminates this for all subsequent runs.
+
+```bash
+# First run: queries Snowflake, saves Parquet to disk
+# Prints: "Features cached to: data/features_2026-04.parquet"
+python ml/models/demand_forecast/train.py \
+  --run-date 2026-04-19 \
+  --features-cache data/features_2026-04.parquet
+
+# Subsequent runs: loads from disk, zero Snowflake credits
+# Prints: "Loading features from cache: data/features_2026-04.parquet"
+python ml/models/demand_forecast/train.py \
+  --run-date 2026-04-19 \
+  --features-cache data/features_2026-04.parquet
+```
+
+**The cache is never generated automatically.** You must pass `--features-cache PATH`
+explicitly. Without the flag, every run queries Snowflake fresh with no caching.
+
+**Cache invalidation**: delete the file when new monthly Gold data lands (i.e. when
+`run_date` month changes). Name the cache file with the month so it's obvious when
+it's stale: `data/features_YYYY-MM.parquet`.
+
+**Airflow DAG**: the `retrain_demand_forecast` DAG calls `run_training()` with no
+`cache_path` — it always queries Snowflake fresh. Cache is a local dev tool only.
+
+---
+
+## 7. MLflow Tracking Server
 
 | Setting | Value |
 |---|---|
@@ -139,3 +171,16 @@ Set in all training scripts:
 import mlflow
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 ```
+### Version compatibility requirement
+
+- Keep the MLflow **client and server on the same major/minor version** to avoid
+  REST API mismatch during model artifact logging.
+- Minimum safe baseline for this project is currently:
+  - local client: `mlflow==2.19.0`
+  - Docker server: `mlflow==2.19.0`
+- Before Stage 4+ runs that call `model.log_model()`, verify both sides:
+  - `python -c "import mlflow; print(mlflow.__version__)"`
+  - `docker compose exec -T mlflow mlflow --version`
+- If versions differ, align them before running experiments. Do not switch
+  experiment scripts to local file tracking as a workaround; all runs must remain
+  in the server-backed tracking backend for clean lineage.

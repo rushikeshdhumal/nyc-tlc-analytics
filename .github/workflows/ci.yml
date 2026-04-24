@@ -49,11 +49,11 @@ jobs:
 
       - name: Lint Python
         run: |
-          ruff check orchestration infra
+          ruff check orchestration infra ml
 
       - name: Check Python syntax
         run: |
-          python -m compileall orchestration infra
+          python -m compileall orchestration infra ml
 
       - name: Initialise Airflow metadata DB
         run: airflow db init
@@ -70,6 +70,64 @@ jobs:
               raise SystemExit(1)
 
           print(f"Parsed {len(dag_bag.dags)} DAG(s) with zero import errors.")
+          PY
+
+  ml-checks:
+    name: ML Import Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install ML dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ml/requirements-ci.txt
+
+      - name: ML module import smoke test
+        run: |
+          python - <<'PY'
+          import importlib
+          import sys
+          from pathlib import Path
+
+          # Postponed models — torch/directml required, not installed in CI.
+          POSTPONED = {
+              "ml/models/demand_forecast/xgb_forecaster.py",
+              "ml/models/demand_forecast/lstm_forecaster.py",
+              "ml/models/demand_forecast/tabnet_forecaster.py",
+          }
+
+          sys.path.insert(0, ".")
+          errors = []
+          skipped = []
+
+          for path in sorted(Path("ml").rglob("*.py")):
+              rel = path.as_posix()
+              if rel in POSTPONED:
+                  print(f"SKIP (postponed): {rel}")
+                  skipped.append(rel)
+                  continue
+              module = rel.replace("/", ".").removesuffix(".py")
+              try:
+                  importlib.import_module(module)
+                  print(f"OK: {module}")
+              except Exception as e:
+                  errors.append((module, str(e)))
+                  print(f"FAIL: {module} — {e}")
+
+          print(f"\n{len(skipped)} postponed file(s) skipped.")
+          if errors:
+              print(f"{len(errors)} import error(s):")
+              for mod, err in errors:
+                  print(f"  {mod}: {err}")
+              raise SystemExit(1)
+          print("All non-postponed ML modules imported successfully.")
           PY
 
   dbt-static-checks:

@@ -90,7 +90,7 @@ class TabNetForecaster:
 
 def _get_device() -> str:
     try:
-        import torch_directml
+        # import torch_directml
         return "cpu"  # TabNetRegressor device_name — DirectML used internally by torch
     except ImportError:
         return "cpu"

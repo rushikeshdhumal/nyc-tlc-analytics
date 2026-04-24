@@ -56,14 +56,15 @@
   - **Note**: when you resume XGB/LSTM/TabNet, the only CI changes needed are removing those three entries from `POSTPONED` in the smoke test and adding `pytorch-tabnet` back to `requirements-ci.txt`.
 - [x] Write ADR-005: LightGBM over TFT for demand forecasting.
 
-## Phase 8 (ML): Congestion Pricing Impact Analysis
-- [ ] Define treatment (Manhattan CBD zones) and control (outer borough zones) groups.
-- [ ] Build incremental DiD model: growing post-treatment window (Jan 2025 – present); re-runs monthly as new data lands, stabilising the effect estimate over time.
-- [ ] Quantify revenue and trip count impact per zone; write aggregate results to `ML.fct_congestion_pricing_impact` (overwrite on each run — idempotent).
-- [ ] Visualize treatment effect in Superset (aggregate effect over time).
-- [ ] **Airflow DAG `congestion_pricing_analysis`**: triggered as a downstream dependency of `ingest_nyc_taxi_raw` (after `dbt_transform` completes, in parallel with `trigger_retrain_demand_forecast`); `schedule=None`, `reset_dag_run=True`.
-- [ ] Write ADR-008: DiD approach for congestion pricing causal inference.
-- [ ] *(Future)* Option 2: month-by-month cohort output — additive extension, no pipeline rework needed.
+## Phase 8 (ML): Congestion Pricing Impact Analysis ✅
+- [x] Define treatment (Manhattan CBD Yellow Zone) and control (Brooklyn, Queens, Bronx) groups.
+- [x] Build incremental DiD model (`congestion_pricing_did.py`): TWFE OLS with zone + day-of-week fixed effects; growing post-treatment window stabilises β₃ estimate monthly.
+- [x] Quantify revenue and trip count impact per zone; write per-zone per-period summary rows to `ML.fct_congestion_pricing_impact`; idempotent (delete-then-insert on `_run_date`).
+- [x] **Airflow DAG `congestion_pricing_analysis`**: triggered in parallel with `retrain_demand_forecast` after `dbt_transform`; `schedule=None`, `reset_dag_run=True`. Verified end-to-end.
+- [x] Write ADR-007: DiD approach for congestion pricing causal inference.
+- [x] Superset view SQL (`infra/scripts/congestion_pricing_views.sql`) and chart spec notes ready — dashboard build deferred as a future extension.
+- [x] `DAGS_ARE_PAUSED_AT_CREATION=false` added to docker-compose to prevent silent queuing of newly discovered DAGs.
+- [ ] *(Future)* Build Superset congestion pricing dashboard from `viz/superset/congestion_pricing_impact__v1.0.0__2026-04-23.notes.md`.
 
 ## Phase 9 (ML): Model Monitoring & Drift Detection
 - [ ] Compute monthly prediction error metrics (MAE, RMSE, MAPE) against actuals in Gold — comparing `fct_demand_forecast` predictions to `fct_revenue_per_zone_hourly` trip counts for the same period.
@@ -72,4 +73,4 @@
 - [ ] Surface model health in Superset: prediction error trend over time, drift flags, model version history.
 - [ ] **Airflow DAG `monitor_demand_forecast`**: triggered as a downstream dependency of `retrain_demand_forecast` (runs after predictions are written); `schedule=None`, `reset_dag_run=True`.
 - [ ] Automated retraining signal: if MAPE degrades beyond the production baseline threshold, log a warning and open a clear path to trigger retraining.
-- [ ] Write ADR-009: model monitoring and drift detection approach.
+- [ ] Write ADR-008: model monitoring and drift detection approach.

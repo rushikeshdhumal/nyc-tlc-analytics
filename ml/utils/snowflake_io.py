@@ -33,6 +33,17 @@ def read_gold(query: str) -> pd.DataFrame:
             return cursor.fetch_pandas_all()
 
 
+def read_sql(query: str) -> pd.DataFrame:
+    """Execute any SELECT query and return a DataFrame.
+
+    Used by monitoring scripts that need to read from both Gold and ML schemas.
+    """
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            return cursor.fetch_pandas_all()
+
+
 def write_ml_table(
     df: pd.DataFrame,
     table_name: str,
@@ -141,6 +152,66 @@ def insert_congestion_impact_rows(df: pd.DataFrame) -> None:
             try:
                 for i in range(0, len(records), 5000):
                     cursor.executemany(sql, records[i : i + 5000])
+            except ProgrammingError:
+                for record in records:
+                    cursor.execute(sql, record)
+
+
+def insert_model_monitoring_rows(df: pd.DataFrame) -> None:
+    """Insert one monitoring summary row into ML.FCT_MODEL_MONITORING.
+
+    Uses explicit SQL to avoid Parquet/logical-type ambiguity for date columns.
+    Caller must DELETE WHERE MONITOR_DATE = run_date before calling to stay idempotent.
+    """
+    required_columns = [
+        "monitor_date", "prediction_month", "model_version", "model_run_id",
+        "mae", "rmse", "mape", "training_test_mape", "baseline_mape",
+        "mape_degraded", "n_predictions", "n_actuals",
+        "drifted_features", "n_drifted_features", "_scored_at",
+    ]
+    missing = [col for col in required_columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns for monitoring insert: {missing}")
+
+    monitor_dates = pd.to_datetime(df["monitor_date"], errors="raise").dt.date
+    scored_ats = pd.to_datetime(df["_scored_at"], errors="raise")
+
+    records = list(
+        zip(
+            list(monitor_dates),
+            df["prediction_month"].astype("object").tolist(),
+            df["model_version"].astype("object").tolist(),
+            df["model_run_id"].astype("object").tolist(),
+            df["mae"].astype("float64").tolist(),
+            df["rmse"].astype("float64").tolist(),
+            df["mape"].astype("float64").tolist(),
+            df["training_test_mape"].astype("float64").tolist(),
+            df["baseline_mape"].astype("float64").tolist(),
+            df["mape_degraded"].astype(bool).tolist(),
+            df["n_predictions"].astype("int64").tolist(),
+            df["n_actuals"].astype("int64").tolist(),
+            df["drifted_features"].astype("object").tolist(),
+            df["n_drifted_features"].astype("int64").tolist(),
+            [ts.to_pydatetime() for ts in scored_ats],
+        )
+    )
+    if not records:
+        return
+
+    sql = """
+        INSERT INTO ML.FCT_MODEL_MONITORING (
+            MONITOR_DATE, PREDICTION_MONTH, MODEL_VERSION, MODEL_RUN_ID,
+            MAE, RMSE, MAPE, TRAINING_TEST_MAPE, BASELINE_MAPE,
+            MAPE_DEGRADED, N_PREDICTIONS, N_ACTUALS,
+            DRIFTED_FEATURES, N_DRIFTED_FEATURES, _SCORED_AT
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+    with _connect() as conn:
+        with conn.cursor() as cursor:
+            try:
+                cursor.executemany(sql, records)
             except ProgrammingError:
                 for record in records:
                     cursor.execute(sql, record)

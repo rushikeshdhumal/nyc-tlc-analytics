@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import tempfile
 from calendar import monthrange
 from datetime import date, timedelta
@@ -271,6 +272,27 @@ def run_training(run_date: str, cache_path: str | None = None) -> dict:
             "mlflow.runName", f"lightgbm__{train_end}__{val_mape:.1f}pct"
         )
         mlflow.set_tag("stage", "production_candidate")
+
+        # Feature distribution baseline for Phase 9 drift detection.
+        # Captures per-feature mean/std on the training window so monitor.py
+        # can compare against future months without a Snowflake query.
+        _feature_baseline = {
+            "train_end": train_end,
+            "run_date": run_date,
+            "features": {
+                col: {
+                    "mean": float(train_df[col].mean()),
+                    "std":  float(train_df[col].std()),
+                }
+                for col in FEATURE_COLS
+            },
+        }
+        _baseline_tmpdir = tempfile.mkdtemp(prefix="mlflow_baseline_")
+        _baseline_path = os.path.join(_baseline_tmpdir, "feature_baseline.json")
+        with open(_baseline_path, "w") as _f:
+            json.dump(_feature_baseline, _f, indent=2)
+        mlflow.log_artifact(_baseline_path)
+        shutil.rmtree(_baseline_tmpdir, ignore_errors=True)
 
         # Required artifacts — ML_EXPERIMENT_STANDARDS.md §2
         mlflow.log_artifact(_save_feature_importance(model, FEATURE_COLS))
